@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Inventory — {item.name}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+    dt { font-weight: 600; }
+    section { margin-top: 2rem; }
+    ul { padding-left: 1.25rem; }
+    form.inline { display: inline; margin-left: 0.5rem; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    select, button { padding: 0.3rem 0.6rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{item.displayName ?: item.name}</h1>
+    <nav><a href="/items">All items</a></nav>
+  </header>
+  <dl>
+    <dt>Id</dt><dd>{item.id}</dd>
+    <dt>Name</dt><dd>{item.name}</dd>
+    <dt>Type</dt><dd>{item.type}</dd>
+    {#if item.description}<dt>Description</dt><dd>{item.description}</dd>{/if}
+    {#if item.quantity}<dt>Quantity</dt><dd>{item.quantity}</dd>{/if}
+    {#if item.weightGrams}<dt>Weight</dt><dd>{item.weightGrams} g</dd>{/if}
+  </dl>
+
+  <section>
+    <h2>Contained items</h2>
+    {#if children.empty}
+    <p>This item contains nothing.</p>
+    {#else}
+    <ul>
+      {#for c in children}
+      <li><a href="/items/{c.id}">{c.name}</a></li>
+      {/for}
+    </ul>
+    {/if}
+  </section>
+
+  <section>
+    <h2>In containers</h2>
+    {#if containers.empty}
+    <p>Not inside any container.</p>
+    {#else}
+    <ul>
+      {#for c in containers}
+      <li>
+        <a href="/items/{c.id}">{c.name}</a>
+        <form class="inline" method="post" action="/items/{item.id}/remove-from">
+          <input type="hidden" name="containerId" value="{c.id}">
+          <button type="submit">Remove from this container</button>
+        </form>
+      </li>
+      {/for}
+    </ul>
+    {/if}
+  </section>
+
+  <section>
+    <h2>Put this item somewhere</h2>
+    <form method="post" action="/items/{item.id}/add-to" id="add-form">
+      <select name="containerId" required>
+        <option value="" disabled selected>Choose a container…</option>
+        {#for c in candidates}
+        <option value="{c.id}">{c.name}</option>
+        {/for}
+      </select>
+      <button type="submit">Add to container</button>
+      <button type="submit" formaction="/items/{item.id}/move-to">Move to container</button>
+    </form>
+  </section>
+</body>
+</html>

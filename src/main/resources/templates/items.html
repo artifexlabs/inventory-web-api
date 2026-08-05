@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Inventory — Items</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid #ddd; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    form.inline { display: inline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Items</h1>
+    <div>
+      {user.email}
+      <form class="inline" method="post" action="/logout"><button type="submit">Log out</button></form>
+    </div>
+  </header>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Type</th><th>Quantity</th><th>Container?</th></tr>
+    </thead>
+    <tbody>
+      {#for i in items}
+      <tr>
+        <td><a href="/items/{i.id}">{i.name}</a></td>
+        <td>{i.type}</td>
+        <td>{i.quantity ?: ''}</td>
+        <td>{#if i.containedItems}yes{/if}</td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+  {#if items.empty}
+  <p>No items yet.</p>
+  {/if}
+</body>
+</html>
