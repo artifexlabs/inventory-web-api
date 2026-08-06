@@ -63,7 +63,7 @@ public class OidcLoginResource {
     String displayName = claim("name").orElse(null);
     return this.server.exchange(email, displayName)
         .map(login -> {
-          String sessionId = this.sessions.create(login.token(), login.user());
+          String sessionId = this.sessions.create(login.token());
           return Response.seeOther(URI.create("/items"))
               .cookie(new NewCookie.Builder("inv_session").value(sessionId).path("/").httpOnly(true).build())
               .build();

@@ -80,6 +80,11 @@ public class HttpServerClient implements ServerClient {
   }
 
   @Override
+  public JsonObject me(String token) {
+    return new JsonObject(checked(send(authed(token, "/api/v1/auth/me").GET().build())).body());
+  }
+
+  @Override
   public void logout(String token) {
     send(authed(token, "/api/v1/auth/logout").POST(HttpRequest.BodyPublishers.noBody()).build());
   }

@@ -97,6 +97,12 @@ public class StubServerClient implements ServerClient {
   }
 
   @Override
+  public JsonObject me(String token) {
+    check(token);
+    return this.users.get("u-1").copy();
+  }
+
+  @Override
   public Optional<Login> exchange(String email, String displayName) {
     // mirrors invited-policy: only known users exchange successfully
     return this.users.values().stream().filter(u -> u.getString("email").equalsIgnoreCase(email)).findFirst()
@@ -203,7 +209,7 @@ public class StubServerClient implements ServerClient {
   public Optional<JsonObject> createUser(String token, String email, String displayName, String password,
       boolean admin) {
     check(token);
-    String id = "u-" + (++this.nextId);
+    String id = "user-" + (++this.nextId);
     JsonObject u = new JsonObject().put("id", id).put("email", email).put("admin", admin);
     if (displayName != null)
       u.put("displayName", displayName);

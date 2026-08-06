@@ -44,12 +44,20 @@ import jakarta.ws.rs.core.Response;
  * The vanilla UI: login grants a token (held server-side in the session),
  * items browse with two-way containment navigation, and move/add-to-container
  * actions post back here and call inventory-server.
+ *
+ * The session stores only the token; the user is fetched fresh from
+ * inventory-server on every page, so admin changes and token revocations take
+ * effect immediately without re-login.
  */
 @Path("/")
 @Blocking
 @Produces(MediaType.TEXT_HTML)
 public class PageResource {
   private final static String SESSION_COOKIE = "inv_session";
+
+  /** The per-request view of who is logged in: the token plus the fresh user. */
+  private record Ctx(String token, JsonObject user) {
+  }
 
   @Inject
   ServerClient server;
@@ -75,13 +83,13 @@ public class PageResource {
   @Inject
   Template audit;
 
+  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.oidc.enabled", defaultValue = "false")
+  boolean oidcEnabled;
+
   @GET
   public Response index() {
     return redirect("/items");
   }
-
-  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.oidc.enabled", defaultValue = "false")
-  boolean oidcEnabled;
 
   @GET
   @Path("/login")
@@ -98,7 +106,7 @@ public class PageResource {
       return Response.ok(
           this.login.data("error", "Invalid email or password").data("oidcEnabled", this.oidcEnabled).render())
           .build();
-    String sessionId = this.sessions.create(result.get().token(), result.get().user());
+    String sessionId = this.sessions.create(result.get().token());
     return Response.seeOther(URI.create("/items"))
         .cookie(new NewCookie.Builder(SESSION_COOKIE).value(sessionId).path("/").httpOnly(true).build()).build();
   }
@@ -106,33 +114,33 @@ public class PageResource {
   @POST
   @Path("/logout")
   public Response doLogout(@CookieParam(SESSION_COOKIE) String sessionId) {
-    this.sessions.invalidate(sessionId).ifPresent(s -> this.server.logout(s.token()));
+    this.sessions.invalidate(sessionId).ifPresent(token -> this.server.logout(token));
     return redirect("/login");
   }
 
   @GET
   @Path("/items")
   public Response itemsPage(@CookieParam(SESSION_COOKIE) String sessionId) {
-    return withSession(sessionId, s -> this.items
-        .data("items", toMaps(this.server.items(s.token()))).data("user", s.user().getMap()));
+    return withSession(sessionId, c -> this.items.data("items", toMaps(this.server.items(c.token())))
+        .data("user", c.user().getMap()));
   }
 
   @GET
   @Path("/items/{id}")
   public Response itemPage(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
-    return withSession(sessionId, s -> {
-      Optional<JsonObject> found = this.server.item(s.token(), id);
+    return withSession(sessionId, c -> {
+      Optional<JsonObject> found = this.server.item(c.token(), id);
       if (found.isEmpty())
         return null;
       JsonObject it = found.get();
       List<Map<String, Object>> children = toMaps(
           it.getJsonArray("containedItems", new JsonArray()).stream().map(o -> (JsonObject) o).toList());
-      List<Map<String, Object>> containers = toMaps(this.server.containersOf(s.token(), id));
-      List<Map<String, Object>> candidates = this.server.items(s.token()).stream()
-          .filter(c -> !id.equals(c.getString("id"))).map(JsonObject::getMap).toList();
-      List<Map<String, Object>> history = toMaps(this.server.auditFor(s.token(), id, 20));
+      List<Map<String, Object>> containers = toMaps(this.server.containersOf(c.token(), id));
+      List<Map<String, Object>> candidates = this.server.items(c.token()).stream()
+          .filter(x -> !id.equals(x.getString("id"))).map(JsonObject::getMap).toList();
+      List<Map<String, Object>> history = toMaps(this.server.auditFor(c.token(), id, 20));
       return this.item.data("item", it.getMap()).data("children", children).data("containers", containers)
-          .data("candidates", candidates).data("history", history).data("user", s.user().getMap());
+          .data("candidates", candidates).data("history", history).data("user", c.user().getMap());
     });
   }
 
@@ -141,16 +149,8 @@ public class PageResource {
   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
   public Response createItem(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("name") String name,
       @FormParam("displayName") String displayName, @FormParam("type") String type) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    try {
-      return this.server.createItem(session.get().token(), name, blankToNull(displayName), blankToNull(type))
-          .map(created -> redirect("/items/" + created.getString("id"))).orElseGet(() -> redirect("/items"));
-    } catch (ServerClient.Unauthorized e) {
-      this.sessions.invalidate(sessionId);
-      return redirect("/login");
-    }
+    return action(sessionId, c -> this.server.createItem(c.token(), name, blankToNull(displayName), blankToNull(type))
+        .map(created -> "/items/" + created.getString("id")).orElse("/items"));
   }
 
   @POST
@@ -162,44 +162,76 @@ public class PageResource {
       @FormParam("quantity") String quantity, @FormParam("weightGrams") String weightGrams,
       @FormParam("lengthCm") String lengthCm, @FormParam("widthCm") String widthCm,
       @FormParam("heightCm") String heightCm) {
-    return containmentAction(sessionId, id, s -> this.server.item(s.token(), id).map(existing -> {
-      JsonObject updated = existing.copy();
-      updated.put("name", name);
-      putOrRemove(updated, "displayName", blankToNull(displayName));
-      updated.put("type", type == null || type.isBlank() ? "_" : type);
-      putOrRemove(updated, "description", blankToNull(description));
-      putOrRemoveNumber(updated, "quantity", quantity, Long::parseLong);
-      putOrRemoveNumber(updated, "weightGrams", weightGrams, Double::parseDouble);
-      if (notBlank(lengthCm) && notBlank(widthCm) && notBlank(heightCm))
-        updated.put("dimensionsCm", new JsonObject().put("lengthCm", Double.parseDouble(lengthCm.trim()))
-            .put("widthCm", Double.parseDouble(widthCm.trim())).put("heightCm", Double.parseDouble(heightCm.trim())));
-      else
-        updated.remove("dimensionsCm");
-      updated.put("timestamp", java.time.Instant.now());
-      return this.server.updateItem(s.token(), updated);
-    }).orElse(false));
+    return action(sessionId, c -> {
+      this.server.item(c.token(), id).ifPresent(existing -> {
+        JsonObject updated = existing.copy();
+        updated.put("name", name);
+        putOrRemove(updated, "displayName", blankToNull(displayName));
+        updated.put("type", type == null || type.isBlank() ? "_" : type);
+        putOrRemove(updated, "description", blankToNull(description));
+        putOrRemoveNumber(updated, "quantity", quantity, Long::parseLong);
+        putOrRemoveNumber(updated, "weightGrams", weightGrams, Double::parseDouble);
+        if (notBlank(lengthCm) && notBlank(widthCm) && notBlank(heightCm))
+          updated.put("dimensionsCm",
+              new JsonObject().put("lengthCm", Double.parseDouble(lengthCm.trim()))
+                  .put("widthCm", Double.parseDouble(widthCm.trim()))
+                  .put("heightCm", Double.parseDouble(heightCm.trim())));
+        else
+          updated.remove("dimensionsCm");
+        updated.put("timestamp", java.time.Instant.now());
+        this.server.updateItem(c.token(), updated);
+      });
+      return "/items/" + id;
+    });
   }
 
   @POST
   @Path("/items/{id}/delete")
   public Response deleteItem(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    try {
-      this.server.deleteItem(session.get().token(), id);
-      return redirect("/items");
-    } catch (ServerClient.Unauthorized e) {
-      this.sessions.invalidate(sessionId);
-      return redirect("/login");
-    }
+    return action(sessionId, c -> {
+      this.server.deleteItem(c.token(), id);
+      return "/items";
+    });
+  }
+
+  @POST
+  @Path("/items/{id}/add-to")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response addTo(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @FormParam("containerId") String containerId) {
+    return action(sessionId, c -> {
+      this.server.addToContainer(c.token(), containerId, id);
+      return "/items/" + id;
+    });
+  }
+
+  @POST
+  @Path("/items/{id}/move-to")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response moveTo(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @FormParam("containerId") String containerId) {
+    return action(sessionId, c -> {
+      this.server.moveToContainer(c.token(), id, containerId);
+      return "/items/" + id;
+    });
+  }
+
+  @POST
+  @Path("/items/{id}/remove-from")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response removeFrom(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @FormParam("containerId") String containerId) {
+    return action(sessionId, c -> {
+      this.server.removeFromContainer(c.token(), containerId, id);
+      return "/items/" + id;
+    });
   }
 
   @GET
   @Path("/admin")
   public Response adminPage(@CookieParam(SESSION_COOKIE) String sessionId) {
-    return withAdminSession(sessionId, s -> this.admin.data("users", toMaps(this.server.users(s.token())))
-        .data("user", s.user().getMap()));
+    return withAdminSession(sessionId, c -> this.admin.data("users", toMaps(this.server.users(c.token())))
+        .data("user", c.user().getMap()));
   }
 
   @POST
@@ -208,15 +240,19 @@ public class PageResource {
   public Response adminCreateUser(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("email") String email,
       @FormParam("displayName") String displayName, @FormParam("password") String password,
       @FormParam("admin") String adminFlag) {
-    return adminAction(sessionId,
-        s -> this.server.createUser(s.token(), email, blankToNull(displayName), password, "on".equals(adminFlag))
-            .isPresent());
+    return adminAction(sessionId, c -> {
+      this.server.createUser(c.token(), email, blankToNull(displayName), password, "on".equals(adminFlag));
+      return "/admin";
+    });
   }
 
   @POST
   @Path("/admin/users/{id}/delete")
   public Response adminDeleteUser(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
-    return adminAction(sessionId, s -> this.server.deleteUser(s.token(), id));
+    return adminAction(sessionId, c -> {
+      this.server.deleteUser(c.token(), id);
+      return "/admin";
+    });
   }
 
   @POST
@@ -224,14 +260,18 @@ public class PageResource {
   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
   public Response adminSetAdmin(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
       @FormParam("admin") String admin) {
-    return adminAction(sessionId, s -> this.server.setAdmin(s.token(), id, Boolean.parseBoolean(admin)));
+    return adminAction(sessionId, c -> {
+      this.server.setAdmin(c.token(), id, Boolean.parseBoolean(admin));
+      return "/admin";
+    });
   }
 
   @GET
   @Path("/admin/users/{id}/tokens")
   public Response adminTokens(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
-    return withAdminSession(sessionId, s -> this.tokens.data("tokens", toMaps(this.server.tokensFor(s.token(), id)))
-        .data("userId", id).data("user", s.user().getMap()));
+    return withAdminSession(sessionId, c -> this.tokens
+        .data("tokens", toMaps(this.server.tokensFor(c.token(), id))).data("userId", id)
+        .data("user", c.user().getMap()));
   }
 
   @POST
@@ -239,52 +279,92 @@ public class PageResource {
   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
   public Response adminRevokeToken(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("token") String token,
       @FormParam("userId") String userId) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty() || !isAdmin(session.get()))
-      return redirect("/login");
-    try {
-      this.server.revokeToken(session.get().token(), token);
-      return redirect("/admin/users/" + userId + "/tokens");
-    } catch (ServerClient.Unauthorized e) {
-      this.sessions.invalidate(sessionId);
-      return redirect("/login");
-    }
+    return adminAction(sessionId, c -> {
+      this.server.revokeToken(c.token(), token);
+      return "/admin/users/" + userId + "/tokens";
+    });
   }
 
   @GET
   @Path("/audit")
   public Response auditPage(@CookieParam(SESSION_COOKIE) String sessionId) {
-    return withAdminSession(sessionId, s -> this.audit
-        .data("events", toMaps(this.server.auditRecent(s.token(), 100, 0))).data("user", s.user().getMap()));
+    return withAdminSession(sessionId, c -> this.audit
+        .data("events", toMaps(this.server.auditRecent(c.token(), 100, 0))).data("user", c.user().getMap()));
   }
 
-  private static boolean isAdmin(SessionStore.Session s) {
-    return Boolean.TRUE.equals(s.user().getBoolean("admin"));
+  // --- session plumbing -------------------------------------------------
+
+  private static boolean isAdmin(Ctx c) {
+    return Boolean.TRUE.equals(c.user().getBoolean("admin"));
   }
 
-  private Response withAdminSession(String sessionId,
-      java.util.function.Function<SessionStore.Session, Object> render) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    if (!isAdmin(session.get()))
-      return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
-    return withSession(sessionId, render);
+  /** Resolve the session to a token plus the CURRENT user (throws Unauthorized). */
+  private Optional<Ctx> resolve(String sessionId) {
+    return this.sessions.token(sessionId).map(token -> new Ctx(token, this.server.me(token)));
   }
 
-  private Response adminAction(String sessionId, java.util.function.Function<SessionStore.Session, Boolean> action) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    if (!isAdmin(session.get()))
-      return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
+  private Response withSession(String sessionId, java.util.function.Function<Ctx, Object> render) {
     try {
-      action.apply(session.get());
-      return redirect("/admin");
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      Object result = render.apply(ctx.get());
+      if (result == null)
+        return Response.status(Response.Status.NOT_FOUND).entity("No such item").build();
+      return Response.ok(((TemplateInstance) result).render()).build();
     } catch (ServerClient.Unauthorized e) {
       this.sessions.invalidate(sessionId);
       return redirect("/login");
     }
+  }
+
+  private Response withAdminSession(String sessionId, java.util.function.Function<Ctx, Object> render) {
+    try {
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      if (!isAdmin(ctx.get()))
+        return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
+      return Response.ok(((TemplateInstance) render.apply(ctx.get())).render()).build();
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  /** Run a mutation and redirect to wherever the action says to go next. */
+  private Response action(String sessionId, java.util.function.Function<Ctx, String> act) {
+    try {
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      return redirect(act.apply(ctx.get()));
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  private Response adminAction(String sessionId, java.util.function.Function<Ctx, String> act) {
+    try {
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      if (!isAdmin(ctx.get()))
+        return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
+      return redirect(act.apply(ctx.get()));
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  private static Response redirect(String location) {
+    return Response.seeOther(URI.create(location)).build();
+  }
+
+  private static List<Map<String, Object>> toMaps(List<JsonObject> list) {
+    return list.stream().map(JsonObject::getMap).toList();
   }
 
   private static String blankToNull(String s) {
@@ -308,67 +388,5 @@ public class PageResource {
       j.put(key, parse.apply(raw.trim()));
     else
       j.remove(key);
-  }
-
-  @POST
-  @Path("/items/{id}/add-to")
-  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-  public Response addTo(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
-      @FormParam("containerId") String containerId) {
-    return containmentAction(sessionId, id, s -> this.server.addToContainer(s.token(), containerId, id));
-  }
-
-  @POST
-  @Path("/items/{id}/move-to")
-  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-  public Response moveTo(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
-      @FormParam("containerId") String containerId) {
-    return containmentAction(sessionId, id, s -> this.server.moveToContainer(s.token(), id, containerId));
-  }
-
-  @POST
-  @Path("/items/{id}/remove-from")
-  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-  public Response removeFrom(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
-      @FormParam("containerId") String containerId) {
-    return containmentAction(sessionId, id, s -> this.server.removeFromContainer(s.token(), containerId, id));
-  }
-
-  private Response containmentAction(String sessionId, String itemId,
-      java.util.function.Function<SessionStore.Session, Boolean> action) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    try {
-      action.apply(session.get());
-      return redirect("/items/" + itemId);
-    } catch (ServerClient.Unauthorized e) {
-      this.sessions.invalidate(sessionId);
-      return redirect("/login");
-    }
-  }
-
-  private Response withSession(String sessionId,
-      java.util.function.Function<SessionStore.Session, Object> render) {
-    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
-    if (session.isEmpty())
-      return redirect("/login");
-    try {
-      Object result = render.apply(session.get());
-      if (result == null)
-        return Response.status(Response.Status.NOT_FOUND).entity("No such item").build();
-      return Response.ok(((TemplateInstance) result).render()).build();
-    } catch (ServerClient.Unauthorized e) {
-      this.sessions.invalidate(sessionId);
-      return redirect("/login");
-    }
-  }
-
-  private static Response redirect(String location) {
-    return Response.seeOther(URI.create(location)).build();
-  }
-
-  private static List<Map<String, Object>> toMaps(List<JsonObject> list) {
-    return list.stream().map(JsonObject::getMap).toList();
   }
 }

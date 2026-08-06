@@ -98,6 +98,21 @@ public class AdminAndCrudPagesTest {
   }
 
   @Test
+  public void testAdminFlagRefreshesWithoutRelogin() {
+    String s = login();
+    given().cookie("inv_session", s).get("/admin").then().statusCode(200);
+
+    // demote the logged-in user server-side: the very next request loses admin
+    this.stub.setAdmin(StubServerClient.TOKEN, "u-1", false);
+    given().cookie("inv_session", s).get("/admin").then().statusCode(403);
+    given().cookie("inv_session", s).get("/items").then().statusCode(200); // still logged in
+
+    // promote again: access returns, same session, no re-login
+    this.stub.setAdmin(StubServerClient.TOKEN, "u-1", true);
+    given().cookie("inv_session", s).get("/admin").then().statusCode(200);
+  }
+
+  @Test
   public void testAuditPageRendersEvents() {
     String s = login();
     given().redirects().follow(false).cookie("inv_session", s)

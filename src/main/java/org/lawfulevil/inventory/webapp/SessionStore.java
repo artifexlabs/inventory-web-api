@@ -17,39 +17,93 @@
  */
 package org.lawfulevil.inventory.webapp;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.vertx.core.json.JsonObject;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 /**
- * Server-side sessions: the browser holds only an opaque HTTP-only cookie; the
- * API token never leaves this process.
+ * Server-side sessions mapping an opaque HTTP-only cookie to the user's API
+ * token — nothing else. The user itself is looked up fresh from
+ * inventory-server on every page load, so admin changes and revocations take
+ * effect immediately.
+ *
+ * Sessions persist to a JSON file so a webapp restart does not log everyone
+ * out. Set {@code inventory.webapp.session-file=none} to disable persistence.
  *
  * @author mykel
  *
  */
 @ApplicationScoped
 public class SessionStore {
+  private final static Logger log = LoggerFactory.getLogger(SessionStore.class);
 
-  public record Session(String token, JsonObject user) {
+  private final ConcurrentHashMap<String, String> tokensBySession = new ConcurrentHashMap<>();
+  private final Path file;
+
+  @Inject
+  public SessionStore(@ConfigProperty(name = "inventory.webapp.session-file",
+      defaultValue = "${user.home}/.inventory-webapp-sessions.json") String sessionFile) {
+    this.file = "none".equals(sessionFile) ? null : Path.of(sessionFile);
   }
 
-  private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
+  @PostConstruct
+  void load() {
+    if (this.file == null || !Files.exists(this.file))
+      return;
+    try {
+      JsonObject j = new JsonObject(Files.readString(this.file));
+      j.getMap().forEach((id, token) -> {
+        if (token instanceof String t)
+          this.tokensBySession.put(id, t);
+      });
+      log.info("Restored {} session(s) from {}", this.tokensBySession.size(), this.file);
+    } catch (IOException | RuntimeException e) {
+      log.warn("Could not restore sessions from {}: {}", this.file, e.toString());
+    }
+  }
 
-  public String create(String token, JsonObject user) {
+  private synchronized void persist() {
+    if (this.file == null)
+      return;
+    try {
+      if (this.file.getParent() != null)
+        Files.createDirectories(this.file.getParent());
+      Files.writeString(this.file, new JsonObject(Map.copyOf(this.tokensBySession)).encode());
+    } catch (IOException e) {
+      log.warn("Could not persist sessions to {}: {}", this.file, e.toString());
+    }
+  }
+
+  public String create(String token) {
     String id = UUID.randomUUID().toString();
-    this.sessions.put(id, new Session(token, user));
+    this.tokensBySession.put(id, token);
+    persist();
     return id;
   }
 
-  public Optional<Session> get(String id) {
-    return Optional.ofNullable(id == null ? null : this.sessions.get(id));
+  /** The API token for a session, empty if the session is unknown. */
+  public Optional<String> token(String id) {
+    return Optional.ofNullable(id == null ? null : this.tokensBySession.get(id));
   }
 
-  public Optional<Session> invalidate(String id) {
-    return Optional.ofNullable(id == null ? null : this.sessions.remove(id));
+  /** Ends a session, returning the token it held. */
+  public Optional<String> invalidate(String id) {
+    Optional<String> token = Optional.ofNullable(id == null ? null : this.tokensBySession.remove(id));
+    if (token.isPresent())
+      persist();
+    return token;
   }
 }
