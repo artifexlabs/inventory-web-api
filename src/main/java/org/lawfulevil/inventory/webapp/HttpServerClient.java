@@ -44,10 +44,13 @@ import jakarta.enterprise.context.ApplicationScoped;
 public class HttpServerClient implements ServerClient {
   private final HttpClient http = HttpClient.newHttpClient();
   private final String baseUrl;
+  private final Optional<String> exchangeSecret;
 
-  public HttpServerClient(@ConfigProperty(name = "inventory.server.url",
-      defaultValue = "http://localhost:8080") String baseUrl) {
+  public HttpServerClient(
+      @ConfigProperty(name = "inventory.server.url", defaultValue = "http://localhost:8080") String baseUrl,
+      @ConfigProperty(name = "inventory.oidc.exchange-secret") Optional<String> exchangeSecret) {
     this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    this.exchangeSecret = exchangeSecret;
   }
 
   @Override
@@ -61,6 +64,24 @@ public class HttpServerClient implements ServerClient {
       return Optional.empty();
     JsonObject j = new JsonObject(r.body());
     return Optional.of(new Login(j.getString("token"), j.getJsonObject("user")));
+  }
+
+  @Override
+  public Optional<Login> exchange(String email, String displayName) {
+    HttpResponse<String> r = send(HttpRequest.newBuilder(URI.create(this.baseUrl + "/api/v1/auth/exchange"))
+        .header("Content-Type", "application/json").header("X-Exchange-Secret", this.exchangeSecret.orElse(""))
+        .POST(HttpRequest.BodyPublishers
+            .ofString(new JsonObject().put("email", email).put("displayName", displayName).encode()))
+        .build());
+    if (r.statusCode() != 200)
+      return Optional.empty();
+    JsonObject j = new JsonObject(r.body());
+    return Optional.of(new Login(j.getString("token"), j.getJsonObject("user")));
+  }
+
+  @Override
+  public JsonObject me(String token) {
+    return new JsonObject(checked(send(authed(token, "/api/v1/auth/me").GET().build())).body());
   }
 
   @Override

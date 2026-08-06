@@ -41,6 +41,12 @@ public interface ServerClient {
 
   Optional<Login> login(String email, String password);
 
+  /** OIDC path: trade a Google-verified email for a token via the shared secret. */
+  Optional<Login> exchange(String email, String displayName);
+
+  /** The user this token belongs to, right now; throws Unauthorized if revoked. */
+  JsonObject me(String token);
+
   void logout(String token);
 
   List<JsonObject> items(String token);
