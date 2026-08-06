@@ -66,6 +66,9 @@ public class PageResource {
   SessionStore sessions;
 
   @Inject
+  UserLookup userLookup;
+
+  @Inject
   Template login;
 
   @Inject
@@ -114,7 +117,10 @@ public class PageResource {
   @POST
   @Path("/logout")
   public Response doLogout(@CookieParam(SESSION_COOKIE) String sessionId) {
-    this.sessions.invalidate(sessionId).ifPresent(token -> this.server.logout(token));
+    this.sessions.invalidate(sessionId).ifPresent(token -> {
+      this.userLookup.invalidate(token);
+      this.server.logout(token);
+    });
     return redirect("/login");
   }
 
@@ -300,7 +306,7 @@ public class PageResource {
 
   /** Resolve the session to a token plus the CURRENT user (throws Unauthorized). */
   private Optional<Ctx> resolve(String sessionId) {
-    return this.sessions.token(sessionId).map(token -> new Ctx(token, this.server.me(token)));
+    return this.sessions.token(sessionId).map(token -> new Ctx(token, this.userLookup.me(token)));
   }
 
   private Response withSession(String sessionId, java.util.function.Function<Ctx, Object> render) {
