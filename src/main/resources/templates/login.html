@@ -23,5 +23,8 @@
     <input type="password" id="password" name="password" required>
     <button type="submit">Log in</button>
   </form>
+  {#if oidcEnabled}
+  <p style="margin-top: 1.5rem;"><a href="/oidc/login">Sign in with Google</a></p>
+  {/if}
 </body>
 </html>

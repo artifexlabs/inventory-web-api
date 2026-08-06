@@ -97,6 +97,13 @@ public class StubServerClient implements ServerClient {
   }
 
   @Override
+  public Optional<Login> exchange(String email, String displayName) {
+    // mirrors invited-policy: only known users exchange successfully
+    return this.users.values().stream().filter(u -> u.getString("email").equalsIgnoreCase(email)).findFirst()
+        .map(u -> new Login(TOKEN, u.copy()));
+  }
+
+  @Override
   public void logout(String token) {
     this.revoked = true;
   }

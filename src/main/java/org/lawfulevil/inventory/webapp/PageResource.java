@@ -80,10 +80,13 @@ public class PageResource {
     return redirect("/items");
   }
 
+  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.oidc.enabled", defaultValue = "false")
+  boolean oidcEnabled;
+
   @GET
   @Path("/login")
   public TemplateInstance loginPage() {
-    return this.login.data("error", null);
+    return this.login.data("error", null).data("oidcEnabled", this.oidcEnabled);
   }
 
   @POST
@@ -92,7 +95,9 @@ public class PageResource {
   public Response doLogin(@FormParam("email") String email, @FormParam("password") String password) {
     Optional<ServerClient.Login> result = this.server.login(email, password);
     if (result.isEmpty())
-      return Response.ok(this.login.data("error", "Invalid email or password").render()).build();
+      return Response.ok(
+          this.login.data("error", "Invalid email or password").data("oidcEnabled", this.oidcEnabled).render())
+          .build();
     String sessionId = this.sessions.create(result.get().token(), result.get().user());
     return Response.seeOther(URI.create("/items"))
         .cookie(new NewCookie.Builder(SESSION_COOKIE).value(sessionId).path("/").httpOnly(true).build()).build();
