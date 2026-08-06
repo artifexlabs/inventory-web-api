@@ -66,6 +66,15 @@ public class PageResource {
   @Inject
   Template item;
 
+  @Inject
+  Template admin;
+
+  @Inject
+  Template tokens;
+
+  @Inject
+  Template audit;
+
   @GET
   public Response index() {
     return redirect("/items");
@@ -116,9 +125,184 @@ public class PageResource {
       List<Map<String, Object>> containers = toMaps(this.server.containersOf(s.token(), id));
       List<Map<String, Object>> candidates = this.server.items(s.token()).stream()
           .filter(c -> !id.equals(c.getString("id"))).map(JsonObject::getMap).toList();
+      List<Map<String, Object>> history = toMaps(this.server.auditFor(s.token(), id, 20));
       return this.item.data("item", it.getMap()).data("children", children).data("containers", containers)
-          .data("candidates", candidates).data("user", s.user().getMap());
+          .data("candidates", candidates).data("history", history).data("user", s.user().getMap());
     });
+  }
+
+  @POST
+  @Path("/items/create")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response createItem(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("name") String name,
+      @FormParam("displayName") String displayName, @FormParam("type") String type) {
+    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
+    if (session.isEmpty())
+      return redirect("/login");
+    try {
+      return this.server.createItem(session.get().token(), name, blankToNull(displayName), blankToNull(type))
+          .map(created -> redirect("/items/" + created.getString("id"))).orElseGet(() -> redirect("/items"));
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  @POST
+  @Path("/items/{id}/edit")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response editItem(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @FormParam("name") String name, @FormParam("displayName") String displayName,
+      @FormParam("type") String type, @FormParam("description") String description,
+      @FormParam("quantity") String quantity, @FormParam("weightGrams") String weightGrams,
+      @FormParam("lengthCm") String lengthCm, @FormParam("widthCm") String widthCm,
+      @FormParam("heightCm") String heightCm) {
+    return containmentAction(sessionId, id, s -> this.server.item(s.token(), id).map(existing -> {
+      JsonObject updated = existing.copy();
+      updated.put("name", name);
+      putOrRemove(updated, "displayName", blankToNull(displayName));
+      updated.put("type", type == null || type.isBlank() ? "_" : type);
+      putOrRemove(updated, "description", blankToNull(description));
+      putOrRemoveNumber(updated, "quantity", quantity, Long::parseLong);
+      putOrRemoveNumber(updated, "weightGrams", weightGrams, Double::parseDouble);
+      if (notBlank(lengthCm) && notBlank(widthCm) && notBlank(heightCm))
+        updated.put("dimensionsCm", new JsonObject().put("lengthCm", Double.parseDouble(lengthCm.trim()))
+            .put("widthCm", Double.parseDouble(widthCm.trim())).put("heightCm", Double.parseDouble(heightCm.trim())));
+      else
+        updated.remove("dimensionsCm");
+      updated.put("timestamp", java.time.Instant.now());
+      return this.server.updateItem(s.token(), updated);
+    }).orElse(false));
+  }
+
+  @POST
+  @Path("/items/{id}/delete")
+  public Response deleteItem(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
+    if (session.isEmpty())
+      return redirect("/login");
+    try {
+      this.server.deleteItem(session.get().token(), id);
+      return redirect("/items");
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  @GET
+  @Path("/admin")
+  public Response adminPage(@CookieParam(SESSION_COOKIE) String sessionId) {
+    return withAdminSession(sessionId, s -> this.admin.data("users", toMaps(this.server.users(s.token())))
+        .data("user", s.user().getMap()));
+  }
+
+  @POST
+  @Path("/admin/users")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response adminCreateUser(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("email") String email,
+      @FormParam("displayName") String displayName, @FormParam("password") String password,
+      @FormParam("admin") String adminFlag) {
+    return adminAction(sessionId,
+        s -> this.server.createUser(s.token(), email, blankToNull(displayName), password, "on".equals(adminFlag))
+            .isPresent());
+  }
+
+  @POST
+  @Path("/admin/users/{id}/delete")
+  public Response adminDeleteUser(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    return adminAction(sessionId, s -> this.server.deleteUser(s.token(), id));
+  }
+
+  @POST
+  @Path("/admin/users/{id}/admin")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response adminSetAdmin(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @FormParam("admin") String admin) {
+    return adminAction(sessionId, s -> this.server.setAdmin(s.token(), id, Boolean.parseBoolean(admin)));
+  }
+
+  @GET
+  @Path("/admin/users/{id}/tokens")
+  public Response adminTokens(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    return withAdminSession(sessionId, s -> this.tokens.data("tokens", toMaps(this.server.tokensFor(s.token(), id)))
+        .data("userId", id).data("user", s.user().getMap()));
+  }
+
+  @POST
+  @Path("/admin/tokens/revoke")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response adminRevokeToken(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("token") String token,
+      @FormParam("userId") String userId) {
+    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
+    if (session.isEmpty() || !isAdmin(session.get()))
+      return redirect("/login");
+    try {
+      this.server.revokeToken(session.get().token(), token);
+      return redirect("/admin/users/" + userId + "/tokens");
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  @GET
+  @Path("/audit")
+  public Response auditPage(@CookieParam(SESSION_COOKIE) String sessionId) {
+    return withAdminSession(sessionId, s -> this.audit
+        .data("events", toMaps(this.server.auditRecent(s.token(), 100, 0))).data("user", s.user().getMap()));
+  }
+
+  private static boolean isAdmin(SessionStore.Session s) {
+    return Boolean.TRUE.equals(s.user().getBoolean("admin"));
+  }
+
+  private Response withAdminSession(String sessionId,
+      java.util.function.Function<SessionStore.Session, Object> render) {
+    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
+    if (session.isEmpty())
+      return redirect("/login");
+    if (!isAdmin(session.get()))
+      return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
+    return withSession(sessionId, render);
+  }
+
+  private Response adminAction(String sessionId, java.util.function.Function<SessionStore.Session, Boolean> action) {
+    Optional<SessionStore.Session> session = this.sessions.get(sessionId);
+    if (session.isEmpty())
+      return redirect("/login");
+    if (!isAdmin(session.get()))
+      return Response.status(Response.Status.FORBIDDEN).entity("Admin access required").build();
+    try {
+      action.apply(session.get());
+      return redirect("/admin");
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  private static String blankToNull(String s) {
+    return s == null || s.isBlank() ? null : s.trim();
+  }
+
+  private static boolean notBlank(String s) {
+    return s != null && !s.isBlank();
+  }
+
+  private static void putOrRemove(JsonObject j, String key, String value) {
+    if (value == null)
+      j.remove(key);
+    else
+      j.put(key, value);
+  }
+
+  private static void putOrRemoveNumber(JsonObject j, String key, String raw,
+      java.util.function.Function<String, Number> parse) {
+    if (notBlank(raw))
+      j.put(key, parse.apply(raw.trim()));
+    else
+      j.remove(key);
   }
 
   @POST

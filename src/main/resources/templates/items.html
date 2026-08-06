@@ -16,9 +16,19 @@
     <h1>Items</h1>
     <div>
       {user.email}
+      {#if user.admin}
+      <a href="/admin">Admin</a>
+      <a href="/audit">Audit</a>
+      {/if}
       <form class="inline" method="post" action="/logout"><button type="submit">Log out</button></form>
     </div>
   </header>
+  <form method="post" action="/items/create" style="margin-bottom: 1.5rem;">
+    <input type="text" name="name" placeholder="Name" required>
+    <input type="text" name="displayName" placeholder="Display name">
+    <input type="text" name="type" placeholder="Type">
+    <button type="submit">New item</button>
+  </form>
   <table>
     <thead>
       <tr><th>Name</th><th>Type</th><th>Quantity</th><th>Container?</th></tr>

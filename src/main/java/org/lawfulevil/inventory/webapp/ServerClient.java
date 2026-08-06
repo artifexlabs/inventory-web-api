@@ -54,4 +54,26 @@ public interface ServerClient {
   boolean removeFromContainer(String token, String containerId, String itemId);
 
   boolean moveToContainer(String token, String itemId, String containerId);
+
+  Optional<JsonObject> createItem(String token, String name, String displayName, String type);
+
+  boolean updateItem(String token, JsonObject item);
+
+  boolean deleteItem(String token, String id);
+
+  List<JsonObject> users(String token);
+
+  Optional<JsonObject> createUser(String token, String email, String displayName, String password, boolean admin);
+
+  boolean deleteUser(String token, String id);
+
+  boolean setAdmin(String token, String id, boolean admin);
+
+  List<JsonObject> tokensFor(String token, String userId);
+
+  boolean revokeToken(String token, String tokenToRevoke);
+
+  List<JsonObject> auditRecent(String token, int limit, int offset);
+
+  List<JsonObject> auditFor(String token, String targetId, int limit);
 }

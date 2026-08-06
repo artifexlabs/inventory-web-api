@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Inventory — Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 0.4rem 0.75rem; border-bottom: 1px solid #ddd; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    form.inline { display: inline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Admin — Users</h1>
+    <nav><a href="/items">Items</a> <a href="/audit">Audit</a></nav>
+  </header>
+  <form method="post" action="/admin/users" style="margin-bottom: 1.5rem;">
+    <input type="email" name="email" placeholder="Email" required>
+    <input type="text" name="displayName" placeholder="Display name">
+    <input type="password" name="password" placeholder="Password" required>
+    <label><input type="checkbox" name="admin"> admin</label>
+    <button type="submit">Add user</button>
+  </form>
+  <table>
+    <thead><tr><th>Email</th><th>Name</th><th>Admin</th><th>Actions</th></tr></thead>
+    <tbody>
+      {#for u in users}
+      <tr>
+        <td>{u.email}</td>
+        <td>{u.displayName}</td>
+        <td>{#if u.admin}yes{/if}</td>
+        <td>
+          <a href="/admin/users/{u.id}/tokens">Tokens</a>
+          <form class="inline" method="post" action="/admin/users/{u.id}/admin">
+            {#if u.admin}
+            <input type="hidden" name="admin" value="false"><button type="submit">Demote</button>
+            {#else}
+            <input type="hidden" name="admin" value="true"><button type="submit">Promote</button>
+            {/if}
+          </form>
+          {#if u.id != user.id}
+          <form class="inline" method="post" action="/admin/users/{u.id}/delete"
+                onsubmit="return confirm('Delete {u.email}?');">
+            <button type="submit">Delete</button>
+          </form>
+          {/if}
+        </td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+</body>
+</html>

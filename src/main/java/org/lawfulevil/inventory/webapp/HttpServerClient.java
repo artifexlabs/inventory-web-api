@@ -102,6 +102,73 @@ public class HttpServerClient implements ServerClient {
         .POST(HttpRequest.BodyPublishers.noBody()).build())).statusCode() == 204;
   }
 
+  @Override
+  public Optional<JsonObject> createItem(String token, String name, String displayName, String type) {
+    HttpResponse<String> r = checked(send(authed(token, "/api/v1/items").POST(HttpRequest.BodyPublishers
+        .ofString(new JsonObject().put("name", name).put("displayName", displayName).put("type", type).encode()))
+        .build()));
+    return r.statusCode() == 201 ? Optional.of(new JsonObject(r.body())) : Optional.empty();
+  }
+
+  @Override
+  public boolean updateItem(String token, JsonObject item) {
+    return checked(send(authed(token, "/api/v1/items/" + item.getString("id"))
+        .PUT(HttpRequest.BodyPublishers.ofString(item.encode())).build())).statusCode() == 200;
+  }
+
+  @Override
+  public boolean deleteItem(String token, String id) {
+    return checked(send(authed(token, "/api/v1/items/" + id).DELETE().build())).statusCode() == 204;
+  }
+
+  @Override
+  public List<JsonObject> users(String token) {
+    return toList(checked(send(authed(token, "/api/v1/admin/users").GET().build())));
+  }
+
+  @Override
+  public Optional<JsonObject> createUser(String token, String email, String displayName, String password,
+      boolean admin) {
+    HttpResponse<String> r = checked(send(authed(token, "/api/v1/admin/users")
+        .POST(HttpRequest.BodyPublishers.ofString(new JsonObject().put("email", email)
+            .put("displayName", displayName).put("password", password).put("admin", admin).encode()))
+        .build()));
+    return r.statusCode() == 201 ? Optional.of(new JsonObject(r.body())) : Optional.empty();
+  }
+
+  @Override
+  public boolean deleteUser(String token, String id) {
+    return checked(send(authed(token, "/api/v1/admin/users/" + id).DELETE().build())).statusCode() == 204;
+  }
+
+  @Override
+  public boolean setAdmin(String token, String id, boolean admin) {
+    return checked(send(authed(token, "/api/v1/admin/users/" + id + "/admin")
+        .POST(HttpRequest.BodyPublishers.ofString(new JsonObject().put("admin", admin).encode())).build()))
+        .statusCode() == 200;
+  }
+
+  @Override
+  public List<JsonObject> tokensFor(String token, String userId) {
+    return toList(checked(send(authed(token, "/api/v1/admin/users/" + userId + "/tokens").GET().build())));
+  }
+
+  @Override
+  public boolean revokeToken(String token, String tokenToRevoke) {
+    return checked(send(authed(token, "/api/v1/admin/tokens/" + tokenToRevoke).DELETE().build()))
+        .statusCode() == 204;
+  }
+
+  @Override
+  public List<JsonObject> auditRecent(String token, int limit, int offset) {
+    return toList(checked(send(authed(token, "/api/v1/audit?limit=" + limit + "&offset=" + offset).GET().build())));
+  }
+
+  @Override
+  public List<JsonObject> auditFor(String token, String targetId, int limit) {
+    return toList(checked(send(authed(token, "/api/v1/audit/target/" + targetId + "?limit=" + limit).GET().build())));
+  }
+
   private HttpRequest.Builder authed(String token, String path) {
     return HttpRequest.newBuilder(URI.create(this.baseUrl + path)).header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json");

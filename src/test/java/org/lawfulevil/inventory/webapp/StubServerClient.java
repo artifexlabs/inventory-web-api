@@ -42,7 +42,11 @@ public class StubServerClient implements ServerClient {
 
   final Map<String, JsonObject> items = new LinkedHashMap<>();
   final Map<String, Set<String>> containment = new LinkedHashMap<>();
+  final Map<String, JsonObject> users = new LinkedHashMap<>();
+  final List<JsonObject> auditLog = new java.util.ArrayList<>();
+  final List<JsonObject> issuedTokens = new java.util.ArrayList<>();
   boolean revoked = false;
+  private int nextId = 0;
 
   public StubServerClient() {
     reset();
@@ -51,11 +55,27 @@ public class StubServerClient implements ServerClient {
   public final void reset() {
     this.items.clear();
     this.containment.clear();
+    this.users.clear();
+    this.auditLog.clear();
+    this.issuedTokens.clear();
     this.revoked = false;
+    this.nextId = 0;
     addItem("box-1", "toolbox", "container");
     addItem("bin-1", "spare bin", "container");
     addItem("wrench-1", "wrench", "tool");
     this.containment.get("box-1").add("wrench-1");
+    this.users.put("u-1", new JsonObject().put("id", "u-1").put("email", EMAIL).put("admin", true));
+  }
+
+  private void auditEntry(String action, String targetId) {
+    this.auditLog.add(new JsonObject().put("timestamp", "2019-04-01T12:00:00Z").put("principal", EMAIL)
+        .put("action", action).put("targetId", targetId));
+  }
+
+  /** Test seeding hooks — must be methods so calls pass through the CDI client proxy. */
+  public void seedToken(String token, String userId) {
+    this.issuedTokens.add(new JsonObject().put("token", token).put("userId", userId)
+        .put("issuedAt", "2019-04-01T12:00:00Z").put("revoked", false));
   }
 
   private void addItem(String id, String name, String type) {
@@ -131,5 +151,113 @@ public class StubServerClient implements ServerClient {
     this.containment.values().forEach(kids -> kids.remove(itemId));
     this.containment.get(containerId).add(itemId);
     return true;
+  }
+
+  @Override
+  public Optional<JsonObject> createItem(String token, String name, String displayName, String type) {
+    check(token);
+    String id = "item-" + (++this.nextId);
+    addItem(id, name, type == null ? "_" : type);
+    if (displayName != null)
+      this.items.get(id).put("displayName", displayName);
+    auditEntry("item.create", id);
+    return Optional.of(this.items.get(id).copy());
+  }
+
+  @Override
+  public boolean updateItem(String token, JsonObject item) {
+    check(token);
+    String id = item.getString("id");
+    if (!this.items.containsKey(id))
+      return false;
+    this.items.put(id, item.copy());
+    auditEntry("item.update", id);
+    return true;
+  }
+
+  @Override
+  public boolean deleteItem(String token, String id) {
+    check(token);
+    if (this.items.remove(id) == null)
+      return false;
+    this.containment.remove(id);
+    this.containment.values().forEach(kids -> kids.remove(id));
+    auditEntry("item.delete", id);
+    return true;
+  }
+
+  @Override
+  public List<JsonObject> users(String token) {
+    check(token);
+    return this.users.values().stream().map(JsonObject::copy).toList();
+  }
+
+  @Override
+  public Optional<JsonObject> createUser(String token, String email, String displayName, String password,
+      boolean admin) {
+    check(token);
+    String id = "u-" + (++this.nextId);
+    JsonObject u = new JsonObject().put("id", id).put("email", email).put("admin", admin);
+    if (displayName != null)
+      u.put("displayName", displayName);
+    this.users.put(id, u);
+    auditEntry("user.create", id);
+    return Optional.of(u.copy());
+  }
+
+  @Override
+  public boolean deleteUser(String token, String id) {
+    check(token);
+    boolean did = this.users.remove(id) != null;
+    if (did)
+      auditEntry("user.delete", id);
+    return did;
+  }
+
+  @Override
+  public boolean setAdmin(String token, String id, boolean admin) {
+    check(token);
+    JsonObject u = this.users.get(id);
+    if (u == null)
+      return false;
+    u.put("admin", admin);
+    auditEntry("user.set-admin", id);
+    return true;
+  }
+
+  @Override
+  public List<JsonObject> tokensFor(String token, String userId) {
+    check(token);
+    return this.issuedTokens.stream().filter(t -> t.getString("userId").equals(userId)).map(JsonObject::copy)
+        .toList();
+  }
+
+  @Override
+  public boolean revokeToken(String token, String tokenToRevoke) {
+    check(token);
+    for (JsonObject t : this.issuedTokens)
+      if (t.getString("token").equals(tokenToRevoke) && !Boolean.TRUE.equals(t.getBoolean("revoked"))) {
+        t.put("revoked", true);
+        auditEntry("token.revoke", tokenToRevoke);
+        return true;
+      }
+    return false;
+  }
+
+  @Override
+  public List<JsonObject> auditRecent(String token, int limit, int offset) {
+    check(token);
+    List<JsonObject> reversed = new java.util.ArrayList<>(this.auditLog);
+    java.util.Collections.reverse(reversed);
+    return reversed.stream().skip(offset).limit(limit).map(JsonObject::copy).toList();
+  }
+
+  @Override
+  public List<JsonObject> auditFor(String token, String targetId, int limit) {
+    check(token);
+    List<JsonObject> reversed = new java.util.ArrayList<>(this.auditLog);
+    java.util.Collections.reverse(reversed);
+    return reversed.stream().filter(e -> e.getString("targetId").equals(targetId)).limit(limit)
+        .map(JsonObject::copy).toList();
   }
 }

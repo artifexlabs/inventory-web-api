@@ -61,6 +61,41 @@
   </section>
 
   <section>
+    <h2>Edit</h2>
+    <form method="post" action="/items/{item.id}/edit">
+      <label>Name <input type="text" name="name" value="{item.name}" required></label>
+      <label>Display name <input type="text" name="displayName" value="{item.displayName}"></label>
+      <label>Type <input type="text" name="type" value="{item.type}"></label>
+      <label>Description <input type="text" name="description" value="{item.description}"></label>
+      <label>Quantity <input type="number" name="quantity" min="0" value="{item.quantity}"></label>
+      <label>Weight (g) <input type="number" name="weightGrams" min="0" step="any" value="{item.weightGrams}"></label>
+      <label>L (cm) <input type="number" name="lengthCm" min="0" step="any" value="{item.dimensionsCm.lengthCm}"></label>
+      <label>W (cm) <input type="number" name="widthCm" min="0" step="any" value="{item.dimensionsCm.widthCm}"></label>
+      <label>H (cm) <input type="number" name="heightCm" min="0" step="any" value="{item.dimensionsCm.heightCm}"></label>
+      <button type="submit">Save</button>
+    </form>
+    <form method="post" action="/items/{item.id}/delete" onsubmit="return confirm('Delete this item?');">
+      <button type="submit">Delete item</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>History</h2>
+    {#if history.empty}
+    <p>No recorded changes.</p>
+    {#else}
+    <table>
+      <thead><tr><th>When</th><th>Who</th><th>Action</th></tr></thead>
+      <tbody>
+        {#for e in history}
+        <tr><td>{e.timestamp}</td><td>{e.principal}</td><td>{e.action}</td></tr>
+        {/for}
+      </tbody>
+    </table>
+    {/if}
+  </section>
+
+  <section>
     <h2>Put this item somewhere</h2>
     <form method="post" action="/items/{item.id}/add-to" id="add-form">
       <select name="containerId" required>
