@@ -399,6 +399,38 @@ public class PageResource {
     });
   }
 
+  /** QR scan deep link: the printed label resolves here. */
+  @GET
+  @Path("/i/{id}")
+  public Response deepLink(@PathParam("id") String id) {
+    return redirect("/items/" + id);
+  }
+
+  @GET
+  @Path("/items/{id}/qr.png")
+  @Produces("image/png")
+  public Response qrPng(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    try {
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      return this.server.qrPng(ctx.get().token(), id).map(png -> Response.ok(png, "image/png").build())
+          .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  @POST
+  @Path("/items/{id}/print-label")
+  public Response printLabel(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    return action(sessionId, c -> {
+      this.server.printLabel(c.token(), id);
+      return "/items/" + id;
+    });
+  }
+
   // --- session plumbing -------------------------------------------------
 
   private static boolean isAdmin(Ctx c) {

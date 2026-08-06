@@ -179,6 +179,16 @@ public class UserLookupTest {
     public boolean deleteAsset(String token, String assetId) {
       return false;
     }
+
+    @Override
+    public Optional<byte[]> qrPng(String token, String itemId) {
+      return Optional.empty();
+    }
+
+    @Override
+    public boolean printLabel(String token, String itemId) {
+      return false;
+    }
   }
 
   @Test

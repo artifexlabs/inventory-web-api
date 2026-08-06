@@ -99,4 +99,9 @@ public interface ServerClient {
   Optional<AssetData> downloadAsset(String token, String assetId);
 
   boolean deleteAsset(String token, String assetId);
+
+  /** The item's QR code as PNG bytes; empty for unknown items. */
+  Optional<byte[]> qrPng(String token, String itemId);
+
+  boolean printLabel(String token, String itemId);
 }

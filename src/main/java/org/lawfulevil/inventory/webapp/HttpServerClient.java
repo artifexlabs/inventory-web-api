@@ -252,6 +252,30 @@ public class HttpServerClient implements ServerClient {
     return checked(send(authed(token, "/api/v1/assets/" + assetId).DELETE().build())).statusCode() == 204;
   }
 
+  @Override
+  public Optional<byte[]> qrPng(String token, String itemId) {
+    try {
+      java.net.http.HttpResponse<byte[]> r = this.http.send(
+          HttpRequest.newBuilder(URI.create(this.baseUrl + "/api/v1/items/" + itemId + "/qr.png"))
+              .header("Authorization", "Bearer " + token).GET().build(),
+          java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+      if (r.statusCode() == 401)
+        throw new Unauthorized();
+      return r.statusCode() == 200 ? Optional.of(r.body()) : Optional.empty();
+    } catch (IOException e) {
+      throw new RuntimeException("inventory-server unreachable at " + this.baseUrl, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("interrupted calling inventory-server", e);
+    }
+  }
+
+  @Override
+  public boolean printLabel(String token, String itemId) {
+    return checked(send(authed(token, "/api/v1/items/" + itemId + "/print-label")
+        .POST(HttpRequest.BodyPublishers.noBody()).build())).statusCode() == 204;
+  }
+
   private HttpRequest.Builder authed(String token, String path) {
     return HttpRequest.newBuilder(URI.create(this.baseUrl + path)).header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json");

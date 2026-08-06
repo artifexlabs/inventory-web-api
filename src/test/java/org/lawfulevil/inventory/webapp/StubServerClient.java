@@ -63,6 +63,7 @@ public class StubServerClient implements ServerClient {
     this.locationsById.clear();
     this.assetInfos.clear();
     this.assetBytes.clear();
+    this.printedLabels.clear();
     addItem("box-1", "toolbox", "container");
     addItem("bin-1", "spare bin", "container");
     addItem("wrench-1", "wrench", "tool");
@@ -140,6 +141,29 @@ public class StubServerClient implements ServerClient {
     check(token);
     this.assetBytes.remove(assetId);
     return this.assetInfos.remove(assetId) != null;
+  }
+
+  final List<String> printedLabels = new java.util.ArrayList<>();
+
+  @Override
+  public Optional<byte[]> qrPng(String token, String itemId) {
+    check(token);
+    return this.items.containsKey(itemId)
+        ? Optional.of(new byte[] { (byte) 0x89, 'P', 'N', 'G', 'q', 'r' })
+        : Optional.empty();
+  }
+
+  @Override
+  public boolean printLabel(String token, String itemId) {
+    check(token);
+    if (!this.items.containsKey(itemId))
+      return false;
+    this.printedLabels.add(itemId);
+    return true;
+  }
+
+  public List<String> printedLabels() {
+    return List.copyOf(this.printedLabels);
   }
 
   /** Test seeding hooks — must be methods so calls pass through the CDI client proxy. */

@@ -108,6 +108,14 @@
   </section>
 
   <section>
+    <h2>Label</h2>
+    <img src="/items/{item.id}/qr.png" alt="QR code for {item.id}" width="150" height="150">
+    <form class="inline" method="post" action="/items/{item.id}/print-label">
+      <button type="submit">Print label</button>
+    </form>
+  </section>
+
+  <section>
     <h2>Assets</h2>
     {#if assets.empty}
     <p>No pictures or recordings attached.</p>
