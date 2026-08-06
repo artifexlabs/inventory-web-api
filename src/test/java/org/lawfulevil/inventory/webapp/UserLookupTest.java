@@ -143,6 +143,42 @@ public class UserLookupTest {
     public List<JsonObject> auditFor(String token, String targetId, int limit) {
       return List.of();
     }
+
+    @Override
+    public List<JsonObject> locations(String token) {
+      return List.of();
+    }
+
+    @Override
+    public Optional<JsonObject> createLocation(String token, String name, Double latitude, Double longitude) {
+      return Optional.empty();
+    }
+
+    @Override
+    public boolean deleteLocation(String token, String id) {
+      return false;
+    }
+
+    @Override
+    public List<JsonObject> assetsFor(String token, String itemId) {
+      return List.of();
+    }
+
+    @Override
+    public Optional<JsonObject> uploadAsset(String token, String itemId, String filename, String contentType,
+        byte[] data) {
+      return Optional.empty();
+    }
+
+    @Override
+    public Optional<AssetData> downloadAsset(String token, String assetId) {
+      return Optional.empty();
+    }
+
+    @Override
+    public boolean deleteAsset(String token, String assetId) {
+      return false;
+    }
   }
 
   @Test

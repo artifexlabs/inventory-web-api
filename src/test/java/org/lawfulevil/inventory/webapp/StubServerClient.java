@@ -60,6 +60,9 @@ public class StubServerClient implements ServerClient {
     this.issuedTokens.clear();
     this.revoked = false;
     this.nextId = 0;
+    this.locationsById.clear();
+    this.assetInfos.clear();
+    this.assetBytes.clear();
     addItem("box-1", "toolbox", "container");
     addItem("bin-1", "spare bin", "container");
     addItem("wrench-1", "wrench", "tool");
@@ -70,6 +73,73 @@ public class StubServerClient implements ServerClient {
   private void auditEntry(String action, String targetId) {
     this.auditLog.add(new JsonObject().put("timestamp", "2019-04-01T12:00:00Z").put("principal", EMAIL)
         .put("action", action).put("targetId", targetId));
+  }
+
+  final Map<String, JsonObject> locationsById = new LinkedHashMap<>();
+  final Map<String, JsonObject> assetInfos = new LinkedHashMap<>();
+  final Map<String, byte[]> assetBytes = new LinkedHashMap<>();
+
+  @Override
+  public List<JsonObject> locations(String token) {
+    check(token);
+    return this.locationsById.values().stream().map(JsonObject::copy).toList();
+  }
+
+  @Override
+  public Optional<JsonObject> createLocation(String token, String name, Double latitude, Double longitude) {
+    check(token);
+    String id = "loc-" + (++this.nextId);
+    JsonObject l = new JsonObject().put("id", id).put("name", name);
+    if (latitude != null && longitude != null)
+      l.put("latitude", latitude).put("longitude", longitude);
+    this.locationsById.put(id, l);
+    return Optional.of(l.copy());
+  }
+
+  @Override
+  public boolean deleteLocation(String token, String id) {
+    check(token);
+    boolean referenced = this.items.values().stream().anyMatch(i -> id.equals(i.getString("locationId")));
+    return !referenced && this.locationsById.remove(id) != null;
+  }
+
+  @Override
+  public List<JsonObject> assetsFor(String token, String itemId) {
+    check(token);
+    return this.assetInfos.values().stream().filter(a -> a.getString("itemId").equals(itemId))
+        .map(JsonObject::copy).toList();
+  }
+
+  @Override
+  public Optional<JsonObject> uploadAsset(String token, String itemId, String filename, String contentType,
+      byte[] data) {
+    check(token);
+    if (!this.items.containsKey(itemId))
+      return Optional.empty();
+    String id = "asset-" + (++this.nextId);
+    JsonObject info = new JsonObject().put("id", id).put("itemId", itemId).put("filename", filename)
+        .put("contentType", contentType).put("sizeBytes", data.length)
+        .put("timestamp", "2019-04-01T12:00:00Z");
+    this.assetInfos.put(id, info);
+    this.assetBytes.put(id, data.clone());
+    auditEntry("asset.attach", itemId);
+    return Optional.of(info.copy());
+  }
+
+  @Override
+  public Optional<AssetData> downloadAsset(String token, String assetId) {
+    check(token);
+    JsonObject info = this.assetInfos.get(assetId);
+    return info == null ? Optional.empty()
+        : Optional.of(new AssetData(this.assetBytes.get(assetId), info.getString("contentType"),
+            info.getString("filename")));
+  }
+
+  @Override
+  public boolean deleteAsset(String token, String assetId) {
+    check(token);
+    this.assetBytes.remove(assetId);
+    return this.assetInfos.remove(assetId) != null;
   }
 
   /** Test seeding hooks — must be methods so calls pass through the CDI client proxy. */

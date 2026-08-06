@@ -86,6 +86,9 @@ public class PageResource {
   @Inject
   Template audit;
 
+  @Inject
+  Template locations;
+
   @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.oidc.enabled", defaultValue = "false")
   boolean oidcEnabled;
 
@@ -127,8 +130,17 @@ public class PageResource {
   @GET
   @Path("/items")
   public Response itemsPage(@CookieParam(SESSION_COOKIE) String sessionId) {
-    return withSession(sessionId, c -> this.items.data("items", toMaps(this.server.items(c.token())))
-        .data("user", c.user().getMap()));
+    return withSession(sessionId, c -> {
+      List<Map<String, Object>> all = toMaps(this.server.items(c.token()));
+      for (Map<String, Object> m : all) {
+        Object q = m.get("quantity");
+        Object pv = m.get("parValues");
+        Map<?, ?> par = pv instanceof JsonObject jo ? jo.getMap() : pv instanceof Map<?, ?> mm ? mm : null;
+        if (q instanceof Number qty && par != null && par.get("minOnHand") instanceof Number min)
+          m.put("belowMin", qty.longValue() < min.longValue());
+      }
+      return this.items.data("items", all).data("user", c.user().getMap());
+    });
   }
 
   @GET
@@ -145,8 +157,14 @@ public class PageResource {
       List<Map<String, Object>> candidates = this.server.items(c.token()).stream()
           .filter(x -> !id.equals(x.getString("id"))).map(JsonObject::getMap).toList();
       List<Map<String, Object>> history = toMaps(this.server.auditFor(c.token(), id, 20));
+      List<Map<String, Object>> allLocations = toMaps(this.server.locations(c.token()));
+      List<Map<String, Object>> itemAssets = toMaps(this.server.assetsFor(c.token(), id));
+      String locationName = it.getString("locationId") == null ? null
+          : allLocations.stream().filter(l -> it.getString("locationId").equals(l.get("id")))
+              .map(l -> (String) l.get("name")).findFirst().orElse(null);
       return this.item.data("item", it.getMap()).data("children", children).data("containers", containers)
-          .data("candidates", candidates).data("history", history).data("user", c.user().getMap());
+          .data("candidates", candidates).data("history", history).data("locations", allLocations)
+          .data("assets", itemAssets).data("locationName", locationName).data("user", c.user().getMap());
     });
   }
 
@@ -167,7 +185,8 @@ public class PageResource {
       @FormParam("type") String type, @FormParam("description") String description,
       @FormParam("quantity") String quantity, @FormParam("weightGrams") String weightGrams,
       @FormParam("lengthCm") String lengthCm, @FormParam("widthCm") String widthCm,
-      @FormParam("heightCm") String heightCm) {
+      @FormParam("heightCm") String heightCm, @FormParam("locationId") String locationId,
+      @FormParam("minOnHand") String minOnHand, @FormParam("maxOnHand") String maxOnHand) {
     return action(sessionId, c -> {
       this.server.item(c.token(), id).ifPresent(existing -> {
         JsonObject updated = existing.copy();
@@ -184,6 +203,12 @@ public class PageResource {
                   .put("heightCm", Double.parseDouble(heightCm.trim())));
         else
           updated.remove("dimensionsCm");
+        putOrRemove(updated, "locationId", blankToNull(locationId));
+        if (notBlank(minOnHand) && notBlank(maxOnHand))
+          updated.put("parValues", new JsonObject().put("minOnHand", Long.parseLong(minOnHand.trim()))
+              .put("maxOnHand", Long.parseLong(maxOnHand.trim())));
+        else
+          updated.remove("parValues");
         updated.put("timestamp", java.time.Instant.now());
         this.server.updateItem(c.token(), updated);
       });
@@ -296,6 +321,82 @@ public class PageResource {
   public Response auditPage(@CookieParam(SESSION_COOKIE) String sessionId) {
     return withAdminSession(sessionId, c -> this.audit
         .data("events", toMaps(this.server.auditRecent(c.token(), 100, 0))).data("user", c.user().getMap()));
+  }
+
+  @GET
+  @Path("/locations")
+  public Response locationsPage(@CookieParam(SESSION_COOKIE) String sessionId) {
+    return withSession(sessionId, c -> this.locations
+        .data("locations", toMaps(this.server.locations(c.token()))).data("user", c.user().getMap()));
+  }
+
+  @POST
+  @Path("/locations/create")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response createLocation(@CookieParam(SESSION_COOKIE) String sessionId, @FormParam("name") String name,
+      @FormParam("latitude") String latitude, @FormParam("longitude") String longitude) {
+    return action(sessionId, c -> {
+      Double lat = notBlank(latitude) ? Double.valueOf(latitude.trim()) : null;
+      Double lng = notBlank(longitude) ? Double.valueOf(longitude.trim()) : null;
+      this.server.createLocation(c.token(), name, lat, lng);
+      return "/locations";
+    });
+  }
+
+  @POST
+  @Path("/locations/{id}/delete")
+  public Response deleteLocation(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id) {
+    return action(sessionId, c -> {
+      this.server.deleteLocation(c.token(), id);
+      return "/locations";
+    });
+  }
+
+  @POST
+  @Path("/items/{id}/assets/upload")
+  @Consumes(MediaType.MULTIPART_FORM_DATA)
+  public Response uploadAsset(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("id") String id,
+      @org.jboss.resteasy.reactive.RestForm("file") org.jboss.resteasy.reactive.multipart.FileUpload file) {
+    return action(sessionId, c -> {
+      if (file != null && file.uploadedFile() != null) {
+        try {
+          byte[] data = java.nio.file.Files.readAllBytes(file.uploadedFile());
+          String type = file.contentType() == null ? "application/octet-stream" : file.contentType();
+          String name = file.fileName() == null || file.fileName().isBlank() ? "unnamed" : file.fileName();
+          this.server.uploadAsset(c.token(), id, name, type, data);
+        } catch (java.io.IOException e) {
+          throw new RuntimeException("could not read upload", e);
+        }
+      }
+      return "/items/" + id;
+    });
+  }
+
+  @GET
+  @Path("/assets/{assetId}")
+  public Response asset(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("assetId") String assetId) {
+    try {
+      Optional<Ctx> ctx = resolve(sessionId);
+      if (ctx.isEmpty())
+        return redirect("/login");
+      return this.server.downloadAsset(ctx.get().token(), assetId)
+          .map(a -> Response.ok(a.data(), a.contentType()).build())
+          .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+    } catch (ServerClient.Unauthorized e) {
+      this.sessions.invalidate(sessionId);
+      return redirect("/login");
+    }
+  }
+
+  @POST
+  @Path("/assets/{assetId}/delete")
+  @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+  public Response deleteAsset(@CookieParam(SESSION_COOKIE) String sessionId, @PathParam("assetId") String assetId,
+      @FormParam("itemId") String itemId) {
+    return action(sessionId, c -> {
+      this.server.deleteAsset(c.token(), assetId);
+      return "/items/" + itemId;
+    });
   }
 
   // --- session plumbing -------------------------------------------------

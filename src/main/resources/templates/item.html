@@ -26,6 +26,8 @@
     {#if item.description}<dt>Description</dt><dd>{item.description}</dd>{/if}
     {#if item.quantity}<dt>Quantity</dt><dd>{item.quantity}</dd>{/if}
     {#if item.weightGrams}<dt>Weight</dt><dd>{item.weightGrams} g</dd>{/if}
+    {#if locationName}<dt>Location</dt><dd><a href="/locations">{locationName}</a></dd>{/if}
+    {#if item.parValues}<dt>Par (min/max)</dt><dd>{item.parValues.minOnHand} / {item.parValues.maxOnHand}</dd>{/if}
   </dl>
 
   <section>
@@ -72,6 +74,16 @@
       <label>L (cm) <input type="number" name="lengthCm" min="0" step="any" value="{item.dimensionsCm.lengthCm}"></label>
       <label>W (cm) <input type="number" name="widthCm" min="0" step="any" value="{item.dimensionsCm.widthCm}"></label>
       <label>H (cm) <input type="number" name="heightCm" min="0" step="any" value="{item.dimensionsCm.heightCm}"></label>
+      <label>Location
+        <select name="locationId">
+          <option value="">(none)</option>
+          {#for l in locations}
+          <option value="{l.id}" {#if l.id == item.locationId}selected{/if}>{l.name}</option>
+          {/for}
+        </select>
+      </label>
+      <label>Min on hand <input type="number" name="minOnHand" min="0" value="{item.parValues.minOnHand}"></label>
+      <label>Max on hand <input type="number" name="maxOnHand" min="0" value="{item.parValues.maxOnHand}"></label>
       <button type="submit">Save</button>
     </form>
     <form method="post" action="/items/{item.id}/delete" onsubmit="return confirm('Delete this item?');">
@@ -93,6 +105,35 @@
       </tbody>
     </table>
     {/if}
+  </section>
+
+  <section>
+    <h2>Assets</h2>
+    {#if assets.empty}
+    <p>No pictures or recordings attached.</p>
+    {#else}
+    <ul>
+      {#for a in assets}
+      <li>
+        <a href="/assets/{a.id}">{a.filename}</a> ({a.sizeBytes} bytes)
+        {#if a.contentType.startsWith('image/')}
+        <div><img src="/assets/{a.id}" alt="{a.filename}" style="max-width: 20rem; max-height: 20rem;"></div>
+        {/if}
+        {#if a.contentType.startsWith('audio/')}
+        <div><audio controls src="/assets/{a.id}"></audio></div>
+        {/if}
+        <form class="inline" method="post" action="/assets/{a.id}/delete">
+          <input type="hidden" name="itemId" value="{item.id}">
+          <button type="submit">Delete</button>
+        </form>
+      </li>
+      {/for}
+    </ul>
+    {/if}
+    <form method="post" action="/items/{item.id}/assets/upload" enctype="multipart/form-data">
+      <input type="file" name="file" required>
+      <button type="submit">Attach</button>
+    </form>
   </section>
 
   <section>

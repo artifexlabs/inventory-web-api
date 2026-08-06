@@ -16,6 +16,7 @@
     <h1>Items</h1>
     <div>
       {user.email}
+      <a href="/locations">Locations</a>
       {#if user.admin}
       <a href="/admin">Admin</a>
       <a href="/audit">Audit</a>
@@ -31,7 +32,7 @@
   </form>
   <table>
     <thead>
-      <tr><th>Name</th><th>Type</th><th>Quantity</th><th>Container?</th></tr>
+      <tr><th>Name</th><th>Type</th><th>Quantity</th><th>Stock</th><th>Container?</th></tr>
     </thead>
     <tbody>
       {#for i in items}
@@ -39,6 +40,7 @@
         <td><a href="/items/{i.id}">{i.name}</a></td>
         <td>{i.type}</td>
         <td>{i.quantity ?: ''}</td>
+        <td>{#if i.belowMin}&#9888; Low{/if}</td>
         <td>{#if i.containedItems}yes{/if}</td>
       </tr>
       {/for}

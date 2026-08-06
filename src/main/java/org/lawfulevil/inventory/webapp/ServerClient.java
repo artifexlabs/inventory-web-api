@@ -82,4 +82,21 @@ public interface ServerClient {
   List<JsonObject> auditRecent(String token, int limit, int offset);
 
   List<JsonObject> auditFor(String token, String targetId, int limit);
+
+  record AssetData(byte[] data, String contentType, String filename) {
+  }
+
+  List<JsonObject> locations(String token);
+
+  Optional<JsonObject> createLocation(String token, String name, Double latitude, Double longitude);
+
+  boolean deleteLocation(String token, String id);
+
+  List<JsonObject> assetsFor(String token, String itemId);
+
+  Optional<JsonObject> uploadAsset(String token, String itemId, String filename, String contentType, byte[] data);
+
+  Optional<AssetData> downloadAsset(String token, String assetId);
+
+  boolean deleteAsset(String token, String assetId);
 }

@@ -190,6 +190,68 @@ public class HttpServerClient implements ServerClient {
     return toList(checked(send(authed(token, "/api/v1/audit/target/" + targetId + "?limit=" + limit).GET().build())));
   }
 
+  @Override
+  public List<JsonObject> locations(String token) {
+    return toList(checked(send(authed(token, "/api/v1/locations").GET().build())));
+  }
+
+  @Override
+  public Optional<JsonObject> createLocation(String token, String name, Double latitude, Double longitude) {
+    JsonObject body = new JsonObject().put("name", name);
+    if (latitude != null && longitude != null)
+      body.put("latitude", latitude).put("longitude", longitude);
+    HttpResponse<String> r = checked(send(authed(token, "/api/v1/locations")
+        .POST(HttpRequest.BodyPublishers.ofString(body.encode())).build()));
+    return r.statusCode() == 201 ? Optional.of(new JsonObject(r.body())) : Optional.empty();
+  }
+
+  @Override
+  public boolean deleteLocation(String token, String id) {
+    return checked(send(authed(token, "/api/v1/locations/" + id).DELETE().build())).statusCode() == 204;
+  }
+
+  @Override
+  public List<JsonObject> assetsFor(String token, String itemId) {
+    return toList(checked(send(authed(token, "/api/v1/items/" + itemId + "/assets").GET().build())));
+  }
+
+  @Override
+  public Optional<JsonObject> uploadAsset(String token, String itemId, String filename, String contentType,
+      byte[] data) {
+    HttpResponse<String> r = checked(send(HttpRequest
+        .newBuilder(URI.create(this.baseUrl + "/api/v1/items/" + itemId + "/assets"))
+        .header("Authorization", "Bearer " + token).header("Content-Type", contentType)
+        .header("X-Filename", filename).POST(HttpRequest.BodyPublishers.ofByteArray(data)).build()));
+    return r.statusCode() == 201 ? Optional.of(new JsonObject(r.body())) : Optional.empty();
+  }
+
+  @Override
+  public Optional<AssetData> downloadAsset(String token, String assetId) {
+    try {
+      java.net.http.HttpResponse<byte[]> r = this.http.send(
+          HttpRequest.newBuilder(URI.create(this.baseUrl + "/api/v1/assets/" + assetId))
+              .header("Authorization", "Bearer " + token).GET().build(),
+          java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+      if (r.statusCode() == 401)
+        throw new Unauthorized();
+      if (r.statusCode() != 200)
+        return Optional.empty();
+      return Optional.of(new AssetData(r.body(),
+          r.headers().firstValue("Content-Type").orElse("application/octet-stream"),
+          r.headers().firstValue("X-Filename").orElse("asset")));
+    } catch (IOException e) {
+      throw new RuntimeException("inventory-server unreachable at " + this.baseUrl, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("interrupted calling inventory-server", e);
+    }
+  }
+
+  @Override
+  public boolean deleteAsset(String token, String assetId) {
+    return checked(send(authed(token, "/api/v1/assets/" + assetId).DELETE().build())).statusCode() == 204;
+  }
+
   private HttpRequest.Builder authed(String token, String path) {
     return HttpRequest.newBuilder(URI.create(this.baseUrl + path)).header("Authorization", "Bearer " + token)
         .header("Content-Type", "application/json");
