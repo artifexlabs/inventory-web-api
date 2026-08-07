@@ -2,7 +2,9 @@ inventory-web-api
 =================
 
 *Renamed 2026-08-07 from `inventory-webapp` (repo, directory, and Maven artifact all
-renamed).* Browser-facing web API for inventory: session/login handling, OIDC exchange,
-and the endpoints the web UI consumes. The server-rendered UI currently lives here too;
-it moves to the new `inventory-webapp` module in Phase 5 of the plan, leaving this
-module as the pure web API tier.
+renamed); the server-rendered UI moved out to the `inventory-webapp` module in Phase 5.*
+
+The browser-facing API tier: a transparent pass-through of the whole `/api/v1/*`
+surface to inventory-server, authenticated with the same bearer tokens
+inventory-server issues. This is the stable public surface for the web UI today and
+mobile apps later; it holds no session state and serves no HTML.
