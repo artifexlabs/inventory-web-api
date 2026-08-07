@@ -26,10 +26,10 @@
     <version>1-SNAPSHOT</version>
     <relativePath>../inventory-parent/pom.xml</relativePath>
   </parent>
-  <artifactId>inventory-webapp</artifactId>
+  <artifactId>inventory-web-api</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>${project.artifactId}</name>
-  <description>Web application for inventory (Phase 2: OIDC UI, admin, audit views)</description>
+  <description>Browser-facing web API for inventory (formerly inventory-webapp; UI moves to the new inventory-webapp module in Phase 5)</description>
   <url>${github.url.base}/${project.artifactId}</url>
   <scm>
     <connection>scm:git:${git.url}</connection>
