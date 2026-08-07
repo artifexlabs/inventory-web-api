@@ -33,6 +33,14 @@ import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 public class StubBackend implements QuarkusTestResourceLifecycleManager {
   static final byte[] PNG_BYTES = { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3 };
 
+  /** Canned inventory-server data for the /api/v1/views aggregate tests. */
+  static final String WRENCH = "{\"id\":\"w-1\",\"name\":\"wrench\",\"type\":\"tool\",\"quantity\":2,"
+      + "\"parValues\":{\"minOnHand\":5,\"maxOnHand\":10}}";
+  static final String TOOLBOX = "{\"id\":\"box-1\",\"name\":\"toolbox\",\"displayName\":\"Big red toolbox\","
+      + "\"type\":\"container\",\"locationId\":\"loc-1\","
+      + "\"containedItems\":[{\"id\":\"w-1\",\"name\":\"wrench\"}]}";
+  static final String SHELF = "{\"id\":\"shelf-1\",\"name\":\"shelf\",\"type\":\"container\"}";
+
   private HttpServer server;
 
   @Override
@@ -57,7 +65,27 @@ public class StubBackend implements QuarkusTestResourceLifecycleManager {
     {
       String path = exchange.getRequestURI().getPath();
       byte[] body = exchange.getRequestBody().readAllBytes();
-      if (path.equals("/api/v1/secure")) {
+      if ("Bearer bad".equals(exchange.getRequestHeaders().getFirst("Authorization"))) {
+        respond(exchange, 401, "text/plain", "unauthorized".getBytes());
+      } else if (path.equals("/api/v1/items") && exchange.getRequestMethod().equals("GET")) {
+        respond(exchange, 200, "application/json", ("[" + WRENCH + "," + TOOLBOX + "," + SHELF + "]").getBytes());
+      } else if (path.equals("/api/v1/items/box-1") && exchange.getRequestMethod().equals("GET")) {
+        respond(exchange, 200, "application/json", TOOLBOX.getBytes());
+      } else if (path.equals("/api/v1/items/missing")) {
+        respond(exchange, 404, "text/plain", "no such item".getBytes());
+      } else if (path.equals("/api/v1/items/box-1/containers")) {
+        respond(exchange, 200, "application/json", ("[" + SHELF + "]").getBytes());
+      } else if (path.equals("/api/v1/audit/target/box-1")) {
+        respond(exchange, 200, "application/json",
+            ("[{\"timestamp\":\"2026-08-07T12:00:00Z\",\"principal\":\"a@b.c\","
+                + "\"action\":\"item.update\",\"targetId\":\"box-1\"}]").getBytes());
+      } else if (path.equals("/api/v1/locations")) {
+        respond(exchange, 200, "application/json", "[{\"id\":\"loc-1\",\"name\":\"Garage\"}]".getBytes());
+      } else if (path.equals("/api/v1/items/box-1/assets")) {
+        respond(exchange, 200, "application/json",
+            ("[{\"id\":\"asset-1\",\"itemId\":\"box-1\",\"filename\":\"photo.png\","
+                + "\"contentType\":\"image/png\",\"sizeBytes\":3}]").getBytes());
+      } else if (path.equals("/api/v1/secure")) {
         respond(exchange, 401, "text/plain", "unauthorized".getBytes());
       } else if (path.equals("/api/v1/items/x/qr.png")) {
         exchange.getResponseHeaders().set("X-Filename", "x.png");
