@@ -83,22 +83,40 @@ public class InventoryBackendProducer {
     return this.pgAudit;
   }
 
+  /**
+   * Where committed domain facts go (VERTICLES.md). Stage 1: nowhere — the
+   * wiring exists, the bus does not. Stage 3 switches this on
+   * {@code inventory.events.bus} (none|local|clustered).
+   */
   @Produces
   @Singleton
-  public InventorySystem inventorySystem() {
-    return switch (storage()) {
-    case "pg" -> new PgInventorySystem(this.pools.get(), principal());
-    default -> new InMemoryInventorySystem(this.memoryAudit, principal());
-    };
+  public org.lawfulevil.inventory.api.events.EventPublisher eventPublisher() {
+    return org.lawfulevil.inventory.api.events.EventPublisher.NOOP;
   }
 
   @Produces
   @Singleton
-  public AuditSink auditSink() {
+  public InventorySystem inventorySystem(org.lawfulevil.inventory.api.events.EventPublisher events,
+      AuditSink sink) {
     return switch (storage()) {
+    case "pg" -> new PgInventorySystem(this.pools.get(), principal()).withEventPublisher(events);
+    default -> new InMemoryInventorySystem(sink, principal());
+    };
+  }
+
+  /**
+   * The sink every recorder sees is the publishing decorator: recorded events
+   * are also announced as domain facts. The Pg domain systems bypass this (in-
+   * transaction audit rows) and publish after commit themselves.
+   */
+  @Produces
+  @Singleton
+  public AuditSink auditSink(org.lawfulevil.inventory.api.events.EventPublisher events) {
+    AuditSink raw = switch (storage()) {
     case "pg" -> pgAudit();
     default -> this.memoryAudit;
     };
+    return new org.lawfulevil.inventory.impl.PublishingAuditSink(raw, events);
   }
 
   @Produces
@@ -112,10 +130,12 @@ public class InventoryBackendProducer {
 
   @Produces
   @Singleton
-  public org.lawfulevil.inventory.api.LocationSystem locationSystem(InventorySystem items) {
+  public org.lawfulevil.inventory.api.LocationSystem locationSystem(InventorySystem items,
+      org.lawfulevil.inventory.api.events.EventPublisher events, AuditSink sink) {
     return switch (storage()) {
-    case "pg" -> new org.lawfulevil.inventory.impl.PgLocationSystem(this.pools.get(), principal());
-    default -> new org.lawfulevil.inventory.impl.InMemoryLocationSystem(items, this.memoryAudit, principal());
+    case "pg" -> new org.lawfulevil.inventory.impl.PgLocationSystem(this.pools.get(), principal())
+        .withEventPublisher(events);
+    default -> new org.lawfulevil.inventory.impl.InMemoryLocationSystem(items, sink, principal());
     };
   }
 
@@ -133,21 +153,24 @@ public class InventoryBackendProducer {
 
   @Produces
   @Singleton
-  public org.lawfulevil.inventory.api.AssetStore assetStore(InventorySystem items) {
+  public org.lawfulevil.inventory.api.AssetStore assetStore(InventorySystem items,
+      org.lawfulevil.inventory.api.events.EventPublisher events, AuditSink sink) {
     return switch (storage()) {
-    case "pg" -> new org.lawfulevil.inventory.impl.PgAssetStore(this.pools.get(), principal());
-    default -> new org.lawfulevil.inventory.impl.InMemoryAssetStore(items, this.memoryAudit, principal());
+    case "pg" -> new org.lawfulevil.inventory.impl.PgAssetStore(this.pools.get(), principal())
+        .withEventPublisher(events);
+    default -> new org.lawfulevil.inventory.impl.InMemoryAssetStore(items, sink, principal());
     };
   }
 
   @Produces
   @Singleton
   public org.lawfulevil.inventory.api.RegionSystem regionSystem(InventorySystem items,
-      org.lawfulevil.inventory.api.AssetStore assets) {
+      org.lawfulevil.inventory.api.AssetStore assets,
+      org.lawfulevil.inventory.api.events.EventPublisher events, AuditSink sink) {
     return switch (storage()) {
-    case "pg" -> new org.lawfulevil.inventory.impl.PgRegionSystem(this.pools.get(), principal());
-    default -> new org.lawfulevil.inventory.impl.InMemoryRegionSystem(items, assets, this.memoryAudit,
-        principal());
+    case "pg" -> new org.lawfulevil.inventory.impl.PgRegionSystem(this.pools.get(), principal())
+        .withEventPublisher(events);
+    default -> new org.lawfulevil.inventory.impl.InMemoryRegionSystem(items, assets, sink, principal());
     };
   }
 
