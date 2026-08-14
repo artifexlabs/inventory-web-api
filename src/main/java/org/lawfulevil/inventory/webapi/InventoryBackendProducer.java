@@ -84,14 +84,19 @@ public class InventoryBackendProducer {
   }
 
   /**
-   * Where committed domain facts go (VERTICLES.md). Stage 1: nowhere — the
-   * wiring exists, the bus does not. Stage 3 switches this on
-   * {@code inventory.events.bus} (none|local|clustered).
+   * Where committed domain facts go (VERTICLES.md):
+   * {@code inventory.events.bus} = {@code none} (default — events go
+   * nowhere), {@code local} (in-process Vert.x bus), or {@code clustered}
+   * (same publisher; the cluster is Vert.x configuration, not code).
    */
   @Produces
   @Singleton
-  public org.lawfulevil.inventory.api.events.EventPublisher eventPublisher() {
-    return org.lawfulevil.inventory.api.events.EventPublisher.NOOP;
+  public org.lawfulevil.inventory.api.events.EventPublisher eventPublisher(
+      Instance<io.vertx.core.Vertx> vertx) {
+    return switch (config("inventory.events.bus", "none")) {
+    case "local", "clustered" -> new VertxEventPublisher(vertx.get());
+    default -> org.lawfulevil.inventory.api.events.EventPublisher.NOOP;
+    };
   }
 
   @Produces

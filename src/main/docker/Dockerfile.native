@@ -1,10 +1,23 @@
-# Native image for inventory-web-api (pure JSON gateway/BFF — no AWT, no fonts).
-# Build the runner first:
+# Native image for inventory-web-api — since the HTTP consolidation this is
+# the domain tier, so fonts + fontconfig are REQUIRED: label composition
+# renders text via AWT/Java2D (quarkus-awt), which needs a real fontconfig
+# setup and at least one font family in the image.
+#
+# Build the runner first (from the workspace root, macOS included):
 #   mvn -pl inventory-web-api -am package -DskipTests -Dnative -Dquarkus.native.container-build=true
-FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+# Then:
+#   docker build -f inventory-web-api/src/main/docker/Dockerfile.native -t inventory-web-api:native inventory-web-api
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5
+RUN microdnf install -y fontconfig dejavu-sans-fonts && microdnf clean all \
+    && fc-cache -f
+ENV LANG=C.UTF-8
 WORKDIR /work/
 RUN chown 1001 /work && chmod "g+rwX" /work && chown 1001:root /work
+# quarkus-awt: the native build emits JDK AWT shared libraries (libawt*.so,
+# libfontmanager.so, ...) that the executable dlopens at runtime — ship them
+# beside the binary and point java.library.path at them.
+COPY --chown=1001:root target/*.so /work/
 COPY --chown=1001:root target/*-runner /work/application
 EXPOSE 8081
 USER 1001
-ENTRYPOINT ["./application", "-Dquarkus.http.host=0.0.0.0"]
+ENTRYPOINT ["./application", "-Dquarkus.http.host=0.0.0.0", "-Djava.library.path=/work"]
