@@ -17,60 +17,67 @@
  */
 package org.lawfulevil.inventory.webapi;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.CompletionStage;
 
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.lawfulevil.inventory.api.AssetStore;
+import org.lawfulevil.inventory.api.AuditReader;
+import org.lawfulevil.inventory.api.AuditEventFactory;
+import org.lawfulevil.inventory.api.InventorySystem;
+import org.lawfulevil.inventory.api.Item;
+import org.lawfulevil.inventory.api.ItemFactory;
+import org.lawfulevil.inventory.api.Location;
+import org.lawfulevil.inventory.api.LocationFactory;
+import org.lawfulevil.inventory.api.LocationSystem;
 
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
-import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Read models: page-shaped aggregates composed from the same inventory-server
- * calls the proxy forwards, so every client (web UI now, mobile later) gets
- * them in one round trip. Shaping only — pagination, filtering, and derived
- * display fields ({@code belowMin}, {@code locationName}); no business
- * decisions are made here.
+ * Read models: page-shaped aggregates composed directly from the domain beans
+ * (this service owns them since the HTTP consolidation), so every client (web
+ * UI now, mobile today) gets a page in one round trip. Shaping only —
+ * pagination, filtering, and derived display fields ({@code belowMin},
+ * {@code locationName}); no business decisions are made here.
  *
  * Lives under {@code /api/v1/views/*} rather than shadowing
- * {@code /api/v1/items}: JAX-RS root-resource matching does not backtrack, so
- * prefix-shadowing the items surface would require re-declaring every proxied
- * method on it.
+ * {@code /api/v1/items}: the flat items surface stays canonical; views are
+ * additive conveniences.
  */
 @Path("/api/v1/views")
 @Blocking
 @Produces(MediaType.APPLICATION_JSON)
 public class ItemViewsResource {
 
-  private final HttpClient http = HttpClient.newHttpClient();
-  private final String baseUrl;
+  @Inject
+  InventorySystem inventory;
 
-  public ItemViewsResource(
-      @ConfigProperty(name = "inventory.server.url", defaultValue = "http://localhost:8080") String baseUrl) {
-    this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-  }
+  @Inject
+  LocationSystem locations;
+
+  @Inject
+  AuditReader audit;
+
+  @Inject
+  AssetStore assets;
 
   @GET
   @Path("/items")
-  public Response items(@HeaderParam("Authorization") String auth, @QueryParam("query") String query,
-      @QueryParam("page") @DefaultValue("0") int page, @QueryParam("size") @DefaultValue("25") int size) {
-    List<JsonObject> all = array(required(get("/api/v1/items", auth)));
+  public Response items(@QueryParam("query") String query, @QueryParam("page") @DefaultValue("0") int page,
+      @QueryParam("size") @DefaultValue("25") int size) {
+    List<JsonObject> all = join(this.inventory.getAllItems()).stream().map(ItemFactory::serialize).toList();
     List<JsonObject> matched = all.stream().filter(i -> matches(i, query)).toList();
     int from = Math.max(0, page) * Math.max(1, size);
     List<JsonObject> pageItems = matched.stream().skip(from).limit(Math.max(1, size))
@@ -81,29 +88,32 @@ public class ItemViewsResource {
 
   @GET
   @Path("/items/{id}/detail")
-  public Response detail(@HeaderParam("Authorization") String auth, @PathParam("id") String id) {
-    HttpResponse<String> itemResponse = get("/api/v1/items/" + id, auth);
-    if (itemResponse.statusCode() == 404)
+  public Response detail(@PathParam("id") String id) {
+    Optional<Item> found = join(this.inventory.getItem(id));
+    if (found.isEmpty())
       return Response.status(Response.Status.NOT_FOUND).build();
-    JsonObject item = new JsonObject(required(itemResponse).body());
+    JsonObject item = ItemFactory.serialize(found.get());
 
     JsonArray children = item.getJsonArray("containedItems", new JsonArray());
-    List<JsonObject> containers = array(get("/api/v1/items/" + id + "/containers", auth));
-    List<JsonObject> candidates = array(required(get("/api/v1/items", auth))).stream()
-        .filter(i -> !id.equals(i.getString("id")))
-        .map(i -> new JsonObject().put("id", i.getString("id")).put("name", i.getString("name"))).toList();
-    List<JsonObject> history = array(get("/api/v1/audit/target/" + id + "?limit=20", auth));
-    List<JsonObject> locations = array(get("/api/v1/locations", auth));
-    List<JsonObject> assets = array(get("/api/v1/items/" + id + "/assets", auth));
+    List<JsonObject> containers = join(this.inventory.getContainersOf(id)).stream()
+        .map(ItemFactory::serialize).toList();
+    List<JsonObject> candidates = join(this.inventory.getAllItems()).stream()
+        .filter(i -> !id.equals(i.getId()))
+        .map(i -> new JsonObject().put("id", i.getId()).put("name", i.getName())).toList();
+    List<JsonObject> history = join(this.audit.byTarget(id, 20)).stream()
+        .map(AuditEventFactory::serialize).toList();
+    List<Location> allLocations = join(this.locations.getAllLocations());
+    List<JsonObject> locationJson = allLocations.stream().map(LocationFactory::serialize).toList();
+    List<JsonObject> assetJson = join(this.assets.listFor(id)).stream().map(a -> a.toJson()).toList();
 
     String locationName = item.getString("locationId") == null ? null
-        : locations.stream().filter(l -> item.getString("locationId").equals(l.getString("id")))
-            .map(l -> l.getString("name")).findFirst().orElse(null);
+        : allLocations.stream().filter(l -> item.getString("locationId").equals(l.getId()))
+            .map(Location::getName).findFirst().orElse(null);
 
     JsonObject detail = new JsonObject().put("item", item).put("children", children)
         .put("containers", new JsonArray(containers)).put("candidates", new JsonArray(candidates))
-        .put("history", new JsonArray(history)).put("locations", new JsonArray(locations))
-        .put("assets", new JsonArray(assets));
+        .put("history", new JsonArray(history)).put("locations", new JsonArray(locationJson))
+        .put("assets", new JsonArray(assetJson));
     if (locationName != null)
       detail.put("locationName", locationName);
     return Response.ok(detail.encode()).build();
@@ -133,38 +143,8 @@ public class ItemViewsResource {
     return copy;
   }
 
-  // --- backend plumbing -------------------------------------------------
-
-  private HttpResponse<String> get(String path, String auth) {
-    HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(this.baseUrl + path));
-    if (auth != null)
-      request.header("Authorization", auth);
-    try {
-      HttpResponse<String> r = this.http.send(request.GET().build(), HttpResponse.BodyHandlers.ofString());
-      if (r.statusCode() == 401)
-        throw new WebApplicationException(Response.Status.UNAUTHORIZED);
-      return r;
-    } catch (IOException e) {
-      throw new WebApplicationException("inventory-server unreachable at " + this.baseUrl,
-          Response.Status.BAD_GATEWAY);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new WebApplicationException("interrupted calling inventory-server", Response.Status.BAD_GATEWAY);
-    }
-  }
-
-  /** For calls the aggregate cannot do without: any non-200 becomes 502. */
-  private static HttpResponse<String> required(HttpResponse<String> r) {
-    if (r.statusCode() != 200)
-      throw new WebApplicationException("inventory-server returned " + r.statusCode(),
-          Response.Status.BAD_GATEWAY);
-    return r;
-  }
-
-  /** Optional sections degrade to empty lists instead of failing the page. */
-  private static List<JsonObject> array(HttpResponse<String> r) {
-    if (r.statusCode() != 200)
-      return List.of();
-    return new JsonArray(r.body()).stream().map(o -> (JsonObject) o).toList();
+  /** The views are @Blocking aggregates; joining on a worker thread is fine. */
+  private static <T> T join(CompletionStage<T> stage) {
+    return stage.toCompletableFuture().join();
   }
 }
