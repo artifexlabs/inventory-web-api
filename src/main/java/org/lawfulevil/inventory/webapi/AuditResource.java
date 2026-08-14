@@ -17,11 +17,9 @@
  */
 package org.lawfulevil.inventory.webapi;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.AuditEventFactory;
-import org.lawfulevil.inventory.api.AuditReader;
+import org.lawfulevil.inventory.api.bus.BusActions;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -36,42 +34,32 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Read the audit trail. The global feed is admin-only; the per-target history
- * is available to any authenticated user (it backs the item history view).
+ * Read the audit trail over the bus fabric. The global feed demands the
+ * admin role — enforced by the worker's guard, translated here to 403; the
+ * per-target history is available to any authenticated user (it backs the
+ * item history view).
  */
 @Path("/api/v1/audit")
 @Produces(MediaType.APPLICATION_JSON)
 public class AuditResource {
-  private final static int MAX_LIMIT = 200;
 
   @Inject
-  AuditReader audit;
-
-  @Inject
-  CurrentUser current;
+  BusClient bus;
 
   @GET
   public CompletionStage<Response> recent(@QueryParam("limit") @DefaultValue("50") int limit,
       @QueryParam("offset") @DefaultValue("0") int offset) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(Response.status(Response.Status.FORBIDDEN)
-          .entity(new JsonObject().put("error", "admin access required").encode()).build());
-    return this.audit.recent(clamp(limit), Math.max(0, offset))
-        .thenApply(AuditResource::ok);
+    return BusResponses.respond(
+        this.bus.request(BusActions.AUDIT_RECENT, null, new JsonObject().put("limit", limit).put("offset", offset)),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @GET
   @Path("/target/{id}")
   public CompletionStage<Response> byTarget(@PathParam("id") String id,
       @QueryParam("limit") @DefaultValue("50") int limit) {
-    return this.audit.byTarget(id, clamp(limit)).thenApply(AuditResource::ok);
-  }
-
-  private static int clamp(int limit) {
-    return Math.max(1, Math.min(limit, MAX_LIMIT));
-  }
-
-  private static Response ok(java.util.List<org.lawfulevil.inventory.api.AuditEvent> events) {
-    return Response.ok(new JsonArray(events.stream().map(AuditEventFactory::serialize).toList()).encode()).build();
+    return BusResponses.respond(
+        this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", limit)),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 }

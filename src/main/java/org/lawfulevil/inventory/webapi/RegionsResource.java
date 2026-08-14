@@ -19,8 +19,8 @@ package org.lawfulevil.inventory.webapi;
 
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.ItemFactory;
-import org.lawfulevil.inventory.api.RegionSystem;
+import org.lawfulevil.inventory.api.bus.BusActions;
+import org.lawfulevil.inventory.impl.bus.DefaultRegionPromotion;
 
 import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
@@ -34,7 +34,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Region-id-scoped operations (asset-scoped ones live on
+ * Region-id-scoped operations over the bus fabric (asset-scoped ones live on
  * {@link AssetsResource}). {@code make-item} is draw-then-describe step 2: an
  * existing bare box gets its data and becomes an item, transactionally.
  */
@@ -42,13 +42,13 @@ import jakarta.ws.rs.core.Response;
 public class RegionsResource {
 
   @Inject
-  RegionSystem regions;
+  BusClient bus;
 
   @DELETE
   @Path("/{id}")
   public CompletionStage<Response> delete(@PathParam("id") String id) {
-    return this.regions.deleteRegion(id).thenApply(ok -> ok ? Response.noContent().build()
-        : Response.status(Response.Status.NOT_FOUND).build());
+    return BusResponses.respond(this.bus.request(BusActions.REGIONS_DELETE, id, null),
+        v -> Response.noContent().build());
   }
 
   /** Describe an existing bare box ({name,type,containerId?}) → 201 item. */
@@ -58,10 +58,9 @@ public class RegionsResource {
   @Produces(MediaType.APPLICATION_JSON)
   public CompletionStage<Response> makeItem(@PathParam("id") String id, String body) {
     JsonObject j = new JsonObject(body);
-    return this.regions.makeItemFromRegion(id, j.getString("name"), j.getString("type"), j.getString("containerId"))
-        .thenApply(o -> o
-            .map(item -> Response.status(Response.Status.CREATED).entity(ItemFactory.serialize(item).encode())
-                .build())
-            .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build()));
+    var promotion = new DefaultRegionPromotion(id, j.getString("name"), j.getString("type"),
+        j.getString("containerId"));
+    return BusResponses.respond(this.bus.request(BusActions.REGIONS_MAKE_ITEM, id, promotion.toJson()),
+        item -> Response.status(Response.Status.CREATED).entity(((JsonObject) item).encode()).build());
   }
 }

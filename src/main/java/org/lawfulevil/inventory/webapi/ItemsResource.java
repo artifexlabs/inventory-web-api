@@ -17,12 +17,16 @@
  */
 package org.lawfulevil.inventory.webapi;
 
-import java.util.List;
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.InventorySystem;
 import org.lawfulevil.inventory.api.Item;
 import org.lawfulevil.inventory.api.ItemFactory;
+import org.lawfulevil.inventory.api.LatLong;
+import org.lawfulevil.inventory.api.bus.BusActions;
+import org.lawfulevil.inventory.impl.bus.DefaultAssetUpload;
+import org.lawfulevil.inventory.impl.bus.DefaultContainmentChange;
+import org.lawfulevil.inventory.impl.bus.DefaultItemCreation;
+import org.lawfulevil.inventory.impl.bus.DefaultItemUpdate;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -39,9 +43,11 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * CRUD over the inventory. The wire format is exactly
- * {@link ItemFactory#serialize(Item)} — the same JSON that travels the event
- * bus, so REST and bus consumers share one contract.
+ * CRUD over the inventory — a thin authenticated gateway: every operation
+ * becomes an envelope on the bus fabric, answered by inventory-server's
+ * workers. The wire format is exactly {@link ItemFactory#serialize(Item)} —
+ * the same JSON that travels the event bus, so REST and bus consumers share
+ * one contract.
  */
 @Path("/api/v1/items")
 @Produces(MediaType.APPLICATION_JSON)
@@ -49,32 +55,34 @@ import jakarta.ws.rs.core.Response;
 public class ItemsResource {
 
   @Inject
-  InventorySystem inventory;
+  BusClient bus;
 
   @GET
-  public CompletionStage<String> getAllItems() {
-    return this.inventory.getAllItems().thenApply(ItemsResource::toJsonArray);
+  public CompletionStage<Response> getAllItems() {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_LIST, null, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @GET
   @Path("/type/{type}")
-  public CompletionStage<String> getItemsOfType(@PathParam("type") String type) {
-    return this.inventory.getItemsOfType(type).thenApply(ItemsResource::toJsonArray);
+  public CompletionStage<Response> getItemsOfType(@PathParam("type") String type) {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_LIST_OF_TYPE, type, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @GET
   @Path("/{id}")
   public CompletionStage<Response> getItem(@PathParam("id") String id) {
-    return this.inventory.getItem(id)
-        .thenApply(o -> o.map(i -> Response.ok(ItemFactory.serialize(i).encode()).build())
-            .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build()));
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_GET, id, null),
+        body -> Response.ok(((JsonObject) body).encode()).build());
   }
 
   @POST
   public CompletionStage<Response> createItem(String body) {
     JsonObject j = new JsonObject(body);
-    return this.inventory.createItem(j.getString("name"), j.getString("displayName"), j.getString("type"))
-        .thenApply(i -> Response.status(Response.Status.CREATED).entity(ItemFactory.serialize(i).encode()).build());
+    var creation = new DefaultItemCreation(j.getString("name"), j.getString("displayName"), j.getString("type"));
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_CREATE, null, creation.toJson()),
+        created -> Response.status(Response.Status.CREATED).entity(((JsonObject) created).encode()).build());
   }
 
   @PUT
@@ -85,51 +93,51 @@ public class ItemsResource {
       return java.util.concurrent.CompletableFuture.completedStage(
           Response.status(Response.Status.BAD_REQUEST)
               .entity(new JsonObject().put("error", "body id does not match path id").encode()).build());
-    return this.inventory.updateItem(item)
-        .thenApply(ok -> ok ? Response.ok(ItemFactory.serialize(item).encode()).build()
-            : Response.status(Response.Status.NOT_FOUND).build());
+    var update = new DefaultItemUpdate(id, item);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_UPDATE, id, update.toJson()),
+        updated -> Response.ok(((JsonObject) updated).encode()).build());
   }
 
   @DELETE
   @Path("/{id}")
   public CompletionStage<Response> deleteItem(@PathParam("id") String id) {
-    return this.inventory.deleteItem(id).thenApply(
-        ok -> ok ? Response.noContent().build() : Response.status(Response.Status.NOT_FOUND).build());
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_DELETE, id, null),
+        v -> Response.noContent().build());
   }
 
   @GET
   @Path("/{id}/containers")
-  public CompletionStage<String> getContainers(@PathParam("id") String id) {
-    return this.inventory.getContainersOf(id).thenApply(ItemsResource::toJsonArray);
+  public CompletionStage<Response> getContainers(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_CONTAINERS_OF, id, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @PUT
   @Path("/{containerId}/contained/{itemId}")
   public CompletionStage<Response> addToContainer(@PathParam("containerId") String containerId,
       @PathParam("itemId") String itemId) {
-    return this.inventory.addToContainer(containerId, itemId).thenApply(ItemsResource::noContentOr404);
+    var change = new DefaultContainmentChange(containerId, itemId);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_CONTAIN, null, change.toJson()),
+        v -> Response.noContent().build());
   }
 
   @DELETE
   @Path("/{containerId}/contained/{itemId}")
   public CompletionStage<Response> removeFromContainer(@PathParam("containerId") String containerId,
       @PathParam("itemId") String itemId) {
-    return this.inventory.removeFromContainer(containerId, itemId).thenApply(ItemsResource::noContentOr404);
+    var change = new DefaultContainmentChange(containerId, itemId);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_UNCONTAIN, null, change.toJson()),
+        v -> Response.noContent().build());
   }
 
   @POST
   @Path("/{itemId}/move-to/{containerId}")
   public CompletionStage<Response> moveToContainer(@PathParam("itemId") String itemId,
       @PathParam("containerId") String containerId) {
-    return this.inventory.moveToContainer(itemId, containerId).thenApply(ItemsResource::noContentOr404);
+    var change = new DefaultContainmentChange(containerId, itemId);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_MOVE, null, change.toJson()),
+        v -> Response.noContent().build());
   }
-
-  private static Response noContentOr404(boolean ok) {
-    return ok ? Response.noContent().build() : Response.status(Response.Status.NOT_FOUND).build();
-  }
-
-  @jakarta.inject.Inject
-  org.lawfulevil.inventory.api.AssetStore assets;
 
   @POST
   @Path("/{itemId}/assets")
@@ -141,35 +149,24 @@ public class ItemsResource {
     String name = filename == null || filename.isBlank() ? "unnamed" : filename;
     String type = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM : contentType;
     // explicit client coordinates (a phone's GPS at capture) beat EXIF
-    org.lawfulevil.inventory.api.LatLong explicit = lat != null && lng != null
-        ? new org.lawfulevil.inventory.api.LatLong(lat, lng)
-        : null;
-    return this.assets.store(itemId, name, type, body == null ? new byte[0] : body, explicit)
-        .thenApply(o -> o
-            .map(info -> Response.status(Response.Status.CREATED).entity(info.toJson().encode()).build())
-            .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build()));
+    var upload = new DefaultAssetUpload(itemId, name, type, body,
+        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty());
+    return BusResponses.respond(this.bus.request(BusActions.ASSETS_STORE, itemId, upload.toJson()),
+        info -> Response.status(Response.Status.CREATED).entity(((JsonObject) info).encode()).build());
   }
 
   @GET
   @Path("/{itemId}/assets")
-  public CompletionStage<String> listAssets(@PathParam("itemId") String itemId) {
-    return this.assets.listFor(itemId)
-        .thenApply(list -> new JsonArray(list.stream().map(i -> i.toJson()).toList()).encode());
+  public CompletionStage<Response> listAssets(@PathParam("itemId") String itemId) {
+    return BusResponses.respond(this.bus.request(BusActions.ASSETS_LIST_FOR, itemId, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url",
       defaultValue = "http://localhost:8081")
   String qrBaseUrl;
 
-  @jakarta.inject.Inject
-  org.lawfulevil.inventory.api.LabelPrinter labelPrinter;
-
-  @jakarta.inject.Inject
-  org.lawfulevil.inventory.api.AuditSink auditSink;
-
-  @jakarta.inject.Inject
-  CurrentUser currentUser;
-
+  /** Public addressing is the gateway's knowledge; the worker renders it. */
   private String scanUrl(String id) {
     return this.qrBaseUrl + "/i/" + id;
   }
@@ -178,32 +175,17 @@ public class ItemsResource {
   @Path("/{id}/qr.png")
   @Produces("image/png")
   public CompletionStage<Response> qr(@PathParam("id") String id) {
-    return this.inventory.getItem(id)
-        .thenApply(o -> o.map(i -> Response.ok(QrCodes.png(scanUrl(id), 300), "image/png").build())
-            .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build()));
+    return BusResponses.respond(
+        this.bus.request(BusActions.LABELS_QR, id, new JsonObject().put("url", scanUrl(id))),
+        body -> Response.ok(((JsonObject) body).getBinary("png"), "image/png").build());
   }
 
   @POST
   @Path("/{id}/print-label")
   @Consumes(MediaType.WILDCARD)
   public CompletionStage<Response> printLabel(@PathParam("id") String id) {
-    // Capture on the request thread: hardware printers complete their future on a
-    // pool thread, where the request-scoped CurrentUser proxy is unreachable.
-    String principal = this.currentUser.principal();
-    return this.inventory.getItem(id).thenCompose(o -> o
-        .map(item -> this.labelPrinter.printLabel(item, QrCodes.png(scanUrl(id), 300))
-            .thenCompose(ok -> this.auditSink
-                .record(new org.lawfulevil.inventory.api.DefaultAuditEvent(
-                    org.lawfulevil.inventory.impl.Ulid.next(), java.time.Instant.now(),
-                    principal, "label.print", id,
-                    new JsonObject().put("printed", ok)))
-                .thenApply(v -> ok ? Response.noContent().build()
-                    : Response.status(Response.Status.SERVICE_UNAVAILABLE).build())))
-        .orElseGet(() -> java.util.concurrent.CompletableFuture
-            .completedStage(Response.status(Response.Status.NOT_FOUND).build())));
-  }
-
-  private static String toJsonArray(List<Item> items) {
-    return new JsonArray(items.stream().map(i -> ItemFactory.serialize(i)).toList()).encode();
+    return BusResponses.respond(
+        this.bus.request(BusActions.LABELS_PRINT, id, new JsonObject().put("url", scanUrl(id))),
+        v -> Response.noContent().build());
   }
 }

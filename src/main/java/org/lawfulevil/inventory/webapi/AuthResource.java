@@ -20,9 +20,9 @@ package org.lawfulevil.inventory.webapi;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.TokenService;
 import org.lawfulevil.inventory.api.UserFactory;
-import org.lawfulevil.inventory.impl.UserStore;
+import org.lawfulevil.inventory.api.bus.BusActions;
+import org.lawfulevil.inventory.impl.bus.DefaultCredentials;
 
 import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
@@ -38,7 +38,8 @@ import jakarta.ws.rs.core.Response;
 /**
  * Credential login granting API bearer tokens. {@code /login} is the only
  * unauthenticated path in the API; everything else demands a token this
- * endpoint (or an admin) issued.
+ * endpoint (or an admin) issued. The credential check itself is bus work —
+ * user identity lives behind the fabric — sent pre-auth (fabric token only).
  */
 @Path("/api/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)
@@ -46,10 +47,7 @@ import jakarta.ws.rs.core.Response;
 public class AuthResource {
 
   @Inject
-  UserStore users;
-
-  @Inject
-  TokenService tokens;
+  BusClient bus;
 
   @POST
   @Path("/login")
@@ -59,12 +57,10 @@ public class AuthResource {
     String password = j.getString("password");
     if (email == null || password == null)
       return CompletableFuture.completedStage(badCredentials());
-    return this.users.authenticate(email, password)
-        .thenCompose(o -> o
-            .map(u -> this.tokens.issue(u)
-                .thenApply(t -> Response
-                    .ok(new JsonObject().put("token", t).put("user", UserFactory.serialize(u)).encode()).build()))
-            .orElseGet(() -> CompletableFuture.completedStage(badCredentials())));
+    var credentials = new DefaultCredentials(email, password);
+    return this.bus.anonymous(BusActions.AUTH_LOGIN, credentials.toJson())
+        .thenApply(granted -> Response.ok(((JsonObject) granted).encode()).build())
+        .exceptionally(e -> badCredentials());
   }
 
   @Inject
@@ -83,8 +79,9 @@ public class AuthResource {
   @Path("/logout")
   public CompletionStage<Response> logout(@HeaderParam(HttpHeaders.AUTHORIZATION) String authorization) {
     String token = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7) : "";
-    return this.tokens.revoke(token)
-        .thenApply(ok -> Response.ok(new JsonObject().put("revoked", ok).encode()).build());
+    return BusResponses.respond(
+        this.bus.anonymous(BusActions.AUTH_REVOKE, new JsonObject().put("token", token)),
+        body -> Response.ok(((JsonObject) body).encode()).build());
   }
 
   private static Response badCredentials() {

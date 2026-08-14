@@ -17,11 +17,12 @@
  */
 package org.lawfulevil.inventory.webapi;
 
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
 import org.lawfulevil.inventory.api.LatLong;
-import org.lawfulevil.inventory.api.LocationFactory;
-import org.lawfulevil.inventory.api.LocationSystem;
+import org.lawfulevil.inventory.api.bus.BusActions;
+import org.lawfulevil.inventory.impl.bus.DefaultLocationCreation;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -37,8 +38,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * First-class locations. Deletion answers 409 while items still reference the
- * location, mirroring the store's refusal.
+ * First-class locations, served over the bus fabric. Deletion answers 409
+ * while items still reference the location, mirroring the worker's refusal.
  */
 @Path("/api/v1/locations")
 @Produces(MediaType.APPLICATION_JSON)
@@ -46,43 +47,36 @@ import jakarta.ws.rs.core.Response;
 public class LocationsResource {
 
   @Inject
-  LocationSystem locations;
+  BusClient bus;
 
   @GET
-  public CompletionStage<String> getAllLocations() {
-    return this.locations.getAllLocations().thenApply(
-        list -> new JsonArray(list.stream().map(LocationFactory::serialize).toList()).encode());
+  public CompletionStage<Response> getAllLocations() {
+    return BusResponses.respond(this.bus.request(BusActions.LOCATIONS_LIST, null, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @GET
   @Path("/{id}")
   public CompletionStage<Response> getLocation(@PathParam("id") String id) {
-    return this.locations.getLocation(id)
-        .thenApply(o -> o.map(l -> Response.ok(LocationFactory.serialize(l).encode()).build())
-            .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build()));
+    return BusResponses.respond(this.bus.request(BusActions.LOCATIONS_GET, id, null),
+        body -> Response.ok(((JsonObject) body).encode()).build());
   }
 
   @POST
   public CompletionStage<Response> createLocation(String body) {
     JsonObject j = new JsonObject(body);
-    LatLong coords = j.containsKey("latitude") && j.containsKey("longitude")
-        ? new LatLong(j.getDouble("latitude"), j.getDouble("longitude"))
-        : null;
-    return this.locations.createLocation(j.getString("name"), coords).thenApply(l -> Response
-        .status(Response.Status.CREATED).entity(LocationFactory.serialize(l).encode()).build());
+    Optional<LatLong> coords = j.containsKey("latitude") && j.containsKey("longitude")
+        ? Optional.of(new LatLong(j.getDouble("latitude"), j.getDouble("longitude")))
+        : Optional.empty();
+    var creation = new DefaultLocationCreation(j.getString("name"), coords);
+    return BusResponses.respond(this.bus.request(BusActions.LOCATIONS_CREATE, null, creation.toJson()),
+        created -> Response.status(Response.Status.CREATED).entity(((JsonObject) created).encode()).build());
   }
 
   @DELETE
   @Path("/{id}")
   public CompletionStage<Response> deleteLocation(@PathParam("id") String id) {
-    return this.locations.getLocation(id).thenCompose(existing -> {
-      if (existing.isEmpty())
-        return java.util.concurrent.CompletableFuture
-            .completedStage(Response.status(Response.Status.NOT_FOUND).build());
-      return this.locations.deleteLocation(id)
-          .thenApply(ok -> ok ? Response.noContent().build()
-              : Response.status(Response.Status.CONFLICT)
-                  .entity(new JsonObject().put("error", "location is referenced by items").encode()).build());
-    });
+    return BusResponses.respond(this.bus.request(BusActions.LOCATIONS_DELETE, id, null),
+        v -> Response.noContent().build());
   }
 }

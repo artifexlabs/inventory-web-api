@@ -20,7 +20,6 @@ package org.lawfulevil.inventory.webapi;
 import org.lawfulevil.inventory.api.AuditReader;
 import org.lawfulevil.inventory.api.AuditSink;
 import org.lawfulevil.inventory.api.InventorySystem;
-import org.lawfulevil.inventory.api.InventoryUser;
 import org.lawfulevil.inventory.api.TokenService;
 import org.lawfulevil.inventory.impl.InMemoryAuditSink;
 import org.lawfulevil.inventory.impl.PgAudit;
@@ -32,24 +31,23 @@ import org.lawfulevil.inventory.impl.PgTokenService;
 import org.lawfulevil.inventory.impl.PgUserStore;
 import org.lawfulevil.inventory.impl.UserStore;
 
-import io.quarkus.runtime.StartupEvent;
 import io.vertx.mutiny.sqlclient.Pool;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 /**
- * Selects the storage backend. {@code inventory.storage=memory} (default)
- * serves everything from memory; {@code inventory.storage=pg} uses the
- * Postgres implementations against the configured reactive datasource. The
- * Pool is resolved lazily so memory mode needs no datasource at all.
- *
- * On startup the configured admin user is ensured to exist (idempotent), and
- * in memory mode the configured static API token is seeded so dev and test
- * flows work without logging in first.
+ * Selects the storage backend for EMBEDDED mode only. Since the event-bus
+ * migration the gateway holds no domain beans of its own: in remote mode
+ * ({@code inventory.bus.workers=remote}) these producers are never invoked —
+ * nothing injects them — and inventory-server owns the storage. In embedded
+ * mode {@link EmbeddedWorkers} wires these beans into the same worker set
+ * the server would host. {@code inventory.storage=memory} (default) serves
+ * everything from memory; {@code inventory.storage=pg} uses the Postgres
+ * implementations against the configured reactive datasource. The Pool is
+ * resolved lazily so memory mode needs no datasource at all.
  */
 @ApplicationScoped
 public class InventoryBackendProducer {
@@ -94,7 +92,7 @@ public class InventoryBackendProducer {
   public org.lawfulevil.inventory.api.events.EventPublisher eventPublisher(
       Instance<io.vertx.core.Vertx> vertx) {
     return switch (config("inventory.events.bus", "none")) {
-    case "local", "clustered" -> new VertxEventPublisher(vertx.get());
+    case "local", "clustered" -> new org.lawfulevil.inventory.impl.bus.VertxEventPublisher(vertx.get());
     default -> org.lawfulevil.inventory.api.events.EventPublisher.NOOP;
     };
   }
@@ -197,12 +195,7 @@ public class InventoryBackendProducer {
     };
   }
 
-  void onStart(@Observes StartupEvent ev, UserStore users, TokenService tokens) {
-    InventoryUser admin = users
-        .ensureUser(config("inventory.admin.email", "admin@example.com"), "Administrator",
-            config("inventory.admin.password", "change-me"), true)
-        .toCompletableFuture().join();
-    if (tokens instanceof InMemoryTokenService memoryTokens)
-      memoryTokens.seed(config("inventory.api.token", "dev-token"), admin);
-  }
+  // Admin seeding happens in EmbeddedWorkers (embedded mode only): in remote
+  // mode the gateway owns no storage, so nothing here may touch these beans
+  // at startup.
 }

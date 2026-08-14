@@ -18,7 +18,8 @@
 package org.lawfulevil.inventory.webapi;
 
 import org.jboss.resteasy.reactive.server.ServerRequestFilter;
-import org.lawfulevil.inventory.api.TokenService;
+import org.lawfulevil.inventory.api.UserFactory;
+import org.lawfulevil.inventory.api.bus.BusActions;
 
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonObject;
@@ -29,19 +30,21 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Guards every REST resource with a bearer token validated against the
- * {@link TokenService}. The login and exchange endpoints are the sole
- * exemptions.
+ * Guards every REST resource with a bearer token, resolved to its user by
+ * the auth worker over the bus ({@code auth.token}, pre-auth: the fabric
+ * token vouches for the gateway itself). This is the authentication boundary
+ * the architecture demands: every external input crosses it here, and the
+ * user it resolves is what every subsequent envelope acts for. The login and
+ * exchange endpoints are the sole exemptions.
  *
- * Reactive on purpose: the filter runs on the Vert.x event loop, and in pg
- * mode {@code authenticate} is a real database round trip whose result is
- * delivered by an event loop — joining it here deadlocks (found by
- * PgModeApiTest). Returning a Uni lets the request suspend instead.
+ * Reactive on purpose: the filter runs on the Vert.x event loop and the bus
+ * round trip completes on one — joining here would deadlock. Returning a Uni
+ * lets the request suspend instead.
  */
 public class BearerTokenFilter {
 
   @Inject
-  TokenService tokens;
+  BusClient bus;
 
   @Inject
   CurrentUser currentUser;
@@ -55,12 +58,13 @@ public class BearerTokenFilter {
     String token = header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
     if (token == null)
       return Uni.createFrom().item(unauthorized());
-    return Uni.createFrom().completionStage(() -> this.tokens.authenticate(token)).map(user -> {
-      if (user.isEmpty())
-        return unauthorized();
-      this.currentUser.set(user.get());
-      return null;
-    });
+    return Uni.createFrom()
+        .completionStage(() -> this.bus.anonymous(BusActions.AUTH_TOKEN, new JsonObject().put("token", token)))
+        .map(user -> {
+          this.currentUser.set(UserFactory.deserialize((JsonObject) user));
+          return (Response) null;
+        })
+        .onFailure().recoverWithItem(BearerTokenFilter::unauthorized);
   }
 
   private static Response unauthorized() {

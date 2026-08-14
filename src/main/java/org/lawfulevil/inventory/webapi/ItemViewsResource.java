@@ -19,18 +19,10 @@ package org.lawfulevil.inventory.webapi;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.AssetStore;
-import org.lawfulevil.inventory.api.AuditReader;
-import org.lawfulevil.inventory.api.AuditEventFactory;
-import org.lawfulevil.inventory.api.InventorySystem;
-import org.lawfulevil.inventory.api.Item;
-import org.lawfulevil.inventory.api.ItemFactory;
-import org.lawfulevil.inventory.api.Location;
-import org.lawfulevil.inventory.api.LocationFactory;
-import org.lawfulevil.inventory.api.LocationSystem;
+import org.lawfulevil.inventory.api.bus.BusActions;
 
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.core.json.JsonArray;
@@ -46,11 +38,12 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Read models: page-shaped aggregates composed directly from the domain beans
- * (this service owns them since the HTTP consolidation), so every client (web
- * UI now, mobile today) gets a page in one round trip. Shaping only —
- * pagination, filtering, and derived display fields ({@code belowMin},
- * {@code locationName}); no business decisions are made here.
+ * Read models: page-shaped aggregates composed from bus queries, so every
+ * client (web UI now, mobile today) gets a page in one HTTP round trip.
+ * Shaping only — pagination, filtering, and derived display fields
+ * ({@code belowMin}, {@code locationName}); no business decisions are made
+ * here. The composition fans out as several envelopes; that is gateway work,
+ * not a reason to push view logic into the workers.
  *
  * Lives under {@code /api/v1/views/*} rather than shadowing
  * {@code /api/v1/items}: the flat items surface stays canonical; views are
@@ -62,22 +55,13 @@ import jakarta.ws.rs.core.Response;
 public class ItemViewsResource {
 
   @Inject
-  InventorySystem inventory;
-
-  @Inject
-  LocationSystem locations;
-
-  @Inject
-  AuditReader audit;
-
-  @Inject
-  AssetStore assets;
+  BusClient bus;
 
   @GET
   @Path("/items")
   public Response items(@QueryParam("query") String query, @QueryParam("page") @DefaultValue("0") int page,
       @QueryParam("size") @DefaultValue("25") int size) {
-    List<JsonObject> all = join(this.inventory.getAllItems()).stream().map(ItemFactory::serialize).toList();
+    List<JsonObject> all = objects((JsonArray) join(this.bus.request(BusActions.ITEMS_LIST, null, null)));
     List<JsonObject> matched = all.stream().filter(i -> matches(i, query)).toList();
     int from = Math.max(0, page) * Math.max(1, size);
     List<JsonObject> pageItems = matched.stream().skip(from).limit(Math.max(1, size))
@@ -89,37 +73,42 @@ public class ItemViewsResource {
   @GET
   @Path("/items/{id}/detail")
   public Response detail(@PathParam("id") String id) {
-    Optional<Item> found = join(this.inventory.getItem(id));
-    if (found.isEmpty())
-      return Response.status(Response.Status.NOT_FOUND).build();
-    JsonObject item = ItemFactory.serialize(found.get());
+    final JsonObject item;
+    try {
+      item = (JsonObject) join(this.bus.request(BusActions.ITEMS_GET, id, null));
+    } catch (CompletionException e) {
+      return BusResponses.error(e);
+    }
 
     JsonArray children = item.getJsonArray("containedItems", new JsonArray());
-    List<JsonObject> containers = join(this.inventory.getContainersOf(id)).stream()
-        .map(ItemFactory::serialize).toList();
-    List<JsonObject> candidates = join(this.inventory.getAllItems()).stream()
-        .filter(i -> !id.equals(i.getId()))
-        .map(i -> new JsonObject().put("id", i.getId()).put("name", i.getName())).toList();
-    List<JsonObject> history = join(this.audit.byTarget(id, 20)).stream()
-        .map(AuditEventFactory::serialize).toList();
-    List<Location> allLocations = join(this.locations.getAllLocations());
-    List<JsonObject> locationJson = allLocations.stream().map(LocationFactory::serialize).toList();
-    List<JsonObject> assetJson = join(this.assets.listFor(id)).stream().map(a -> a.toJson()).toList();
+    List<JsonObject> containers = objects(
+        (JsonArray) join(this.bus.request(BusActions.ITEMS_CONTAINERS_OF, id, null)));
+    List<JsonObject> candidates = objects((JsonArray) join(this.bus.request(BusActions.ITEMS_LIST, null, null)))
+        .stream().filter(i -> !id.equals(i.getString("id")))
+        .map(i -> new JsonObject().put("id", i.getString("id")).put("name", i.getString("name"))).toList();
+    List<JsonObject> history = objects((JsonArray) join(
+        this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", 20))));
+    List<JsonObject> locations = objects((JsonArray) join(this.bus.request(BusActions.LOCATIONS_LIST, null, null)));
+    List<JsonObject> assets = objects((JsonArray) join(this.bus.request(BusActions.ASSETS_LIST_FOR, id, null)));
 
     String locationName = item.getString("locationId") == null ? null
-        : allLocations.stream().filter(l -> item.getString("locationId").equals(l.getId()))
-            .map(Location::getName).findFirst().orElse(null);
+        : locations.stream().filter(l -> item.getString("locationId").equals(l.getString("id")))
+            .map(l -> l.getString("name")).findFirst().orElse(null);
 
     JsonObject detail = new JsonObject().put("item", item).put("children", children)
         .put("containers", new JsonArray(containers)).put("candidates", new JsonArray(candidates))
-        .put("history", new JsonArray(history)).put("locations", new JsonArray(locationJson))
-        .put("assets", new JsonArray(assetJson));
+        .put("history", new JsonArray(history)).put("locations", new JsonArray(locations))
+        .put("assets", new JsonArray(assets));
     if (locationName != null)
       detail.put("locationName", locationName);
     return Response.ok(detail.encode()).build();
   }
 
   // --- shaping helpers --------------------------------------------------
+
+  private static List<JsonObject> objects(JsonArray array) {
+    return array.stream().map(JsonObject.class::cast).toList();
+  }
 
   private static boolean matches(JsonObject item, String query) {
     if (query == null || query.isBlank())

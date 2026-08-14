@@ -17,17 +17,11 @@
  */
 package org.lawfulevil.inventory.webapi;
 
-import java.time.Instant;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import org.lawfulevil.inventory.api.AuditSink;
-import org.lawfulevil.inventory.api.DefaultAuditEvent;
-import org.lawfulevil.inventory.api.InventoryUser;
-import org.lawfulevil.inventory.api.TokenService;
-import org.lawfulevil.inventory.api.UserFactory;
-import org.lawfulevil.inventory.impl.Ulid;
-import org.lawfulevil.inventory.impl.UserStore;
+import org.lawfulevil.inventory.api.bus.BusActions;
+import org.lawfulevil.inventory.impl.bus.DefaultAdminChange;
+import org.lawfulevil.inventory.impl.bus.DefaultUserCreation;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -43,9 +37,11 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Admin-only management: users, their admin flag, and issued tokens. Every
- * mutation here writes its own audit entry with the acting admin as the
- * principal.
+ * Admin-only management over the bus fabric: users, their admin flag, and
+ * issued tokens. The admin requirement is the worker guard's role check
+ * (403); every mutation's audit entry is written by the worker with the
+ * envelope's principal — the acting admin — as the actor. The self-delete
+ * refusal (409) keys on the envelope's acting userId.
  */
 @Path("/api/v1/admin")
 @Produces(MediaType.APPLICATION_JSON)
@@ -53,98 +49,59 @@ import jakarta.ws.rs.core.Response;
 public class AdminResource {
 
   @Inject
-  UserStore users;
-
-  @Inject
-  TokenService tokens;
-
-  @Inject
-  AuditSink audit;
-
-  @Inject
-  CurrentUser current;
-
-  private Response forbidden() {
-    return Response.status(Response.Status.FORBIDDEN)
-        .entity(new JsonObject().put("error", "admin access required").encode()).build();
-  }
-
-  private CompletionStage<Void> audit(String action, String targetId, JsonObject details) {
-    return this.audit.record(
-        new DefaultAuditEvent(Ulid.next(), Instant.now(), this.current.principal(), action, targetId, details));
-  }
+  BusClient bus;
 
   @GET
   @Path("/users")
   public CompletionStage<Response> listUsers() {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
-    return this.users.list().thenApply(list -> Response
-        .ok(new JsonArray(list.stream().map(UserFactory::serialize).toList()).encode()).build());
+    return BusResponses.respond(this.bus.request(BusActions.USERS_LIST, null, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @POST
   @Path("/users")
   public CompletionStage<Response> createUser(String body) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
     JsonObject j = new JsonObject(body);
-    String email = j.getString("email");
-    String password = j.getString("password");
-    if (email == null || email.isBlank() || password == null || password.isBlank())
-      return CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
-          .entity(new JsonObject().put("error", "email and password are required").encode()).build());
-    return this.users.ensureUser(email, j.getString("displayName"), password, Boolean.TRUE.equals(j.getBoolean("admin")))
-        .thenCompose(u -> audit("user.create", u.getId(), new JsonObject().put("email", u.getEmail()))
-            .thenApply(v -> Response.status(Response.Status.CREATED).entity(UserFactory.serialize(u).encode())
-                .build()));
+    // Build the typed payload when the submission is complete; an incomplete
+    // one still crosses the bus raw so the worker orders its refusals
+    // correctly — role (403) before validation (400).
+    JsonObject data;
+    try {
+      data = new DefaultUserCreation(j.getString("email"), j.getString("displayName"), j.getString("password"),
+          Boolean.TRUE.equals(j.getBoolean("admin"))).toJson();
+    } catch (IllegalArgumentException incomplete) {
+      data = j;
+    }
+    return BusResponses.respond(this.bus.request(BusActions.USERS_CREATE, null, data),
+        user -> Response.status(Response.Status.CREATED).entity(((JsonObject) user).encode()).build());
   }
 
   @DELETE
   @Path("/users/{id}")
   public CompletionStage<Response> deleteUser(@PathParam("id") String id) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
-    if (this.current.get().map(InventoryUser::getId).filter(id::equals).isPresent())
-      return CompletableFuture.completedStage(Response.status(Response.Status.CONFLICT)
-          .entity(new JsonObject().put("error", "cannot delete yourself").encode()).build());
-    return this.users.delete(id)
-        .thenCompose(ok -> !ok
-            ? CompletableFuture.completedStage(Response.status(Response.Status.NOT_FOUND).build())
-            : audit("user.delete", id, null).thenApply(v -> Response.noContent().build()));
+    return BusResponses.respond(this.bus.request(BusActions.USERS_DELETE, id, null),
+        v -> Response.noContent().build());
   }
 
   @POST
   @Path("/users/{id}/admin")
   public CompletionStage<Response> setAdmin(@PathParam("id") String id, String body) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
-    boolean admin = Boolean.TRUE.equals(new JsonObject(body).getBoolean("admin"));
-    return this.users.setAdmin(id, admin)
-        .thenCompose(o -> o
-            .map(u -> audit("user.set-admin", id, new JsonObject().put("admin", admin))
-                .thenApply(v -> Response.ok(UserFactory.serialize(u).encode()).build()))
-            .orElseGet(() -> CompletableFuture
-                .completedStage(Response.status(Response.Status.NOT_FOUND).build())));
+    var change = new DefaultAdminChange(id, Boolean.TRUE.equals(new JsonObject(body).getBoolean("admin")));
+    return BusResponses.respond(this.bus.request(BusActions.USERS_SET_ADMIN, id, change.toJson()),
+        user -> Response.ok(((JsonObject) user).encode()).build());
   }
 
   @GET
   @Path("/users/{id}/tokens")
   public CompletionStage<Response> listTokens(@PathParam("id") String id) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
-    return this.tokens.tokensFor(id).thenApply(list -> Response
-        .ok(new JsonArray(list.stream().map(t -> t.toJson()).toList()).encode()).build());
+    return BusResponses.respond(this.bus.request(BusActions.TOKENS_FOR_USER, id, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
   @DELETE
   @Path("/tokens/{token}")
   public CompletionStage<Response> revokeToken(@PathParam("token") String token) {
-    if (!this.current.isAdmin())
-      return CompletableFuture.completedStage(forbidden());
-    return this.tokens.revoke(token)
-        .thenCompose(ok -> !ok
-            ? CompletableFuture.completedStage(Response.status(Response.Status.NOT_FOUND).build())
-            : audit("token.revoke", token, null).thenApply(v -> Response.noContent().build()));
+    return BusResponses.respond(this.bus.request(BusActions.TOKENS_REVOKE, token, null),
+        v -> Response.noContent().build());
   }
 }
