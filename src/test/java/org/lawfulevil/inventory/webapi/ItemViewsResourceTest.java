@@ -116,6 +116,19 @@ class ItemViewsResourceTest {
   }
 
   @Test
+  @Order(2)
+  void viewsCarryTypeSuggestions() {
+    // distinct in-use types + the conventional trio, sorted, no "_" filler —
+    // present on the listing AND the detail so every form can offer them
+    given().header("Authorization", "Bearer dev-token").get("/api/v1/views/items").then().statusCode(200)
+        .body("types", hasItem("tool")).body("types", hasItem("furniture"))
+        .body("types", hasItem("container")).body("types", hasItem("location"))
+        .body("types", hasItem("thing")).body("types", not(hasItem("_")));
+    given().header("Authorization", "Bearer dev-token").get("/api/v1/views/items/" + boxId + "/detail").then()
+        .statusCode(200).body("types", hasItem("tool")).body("types", not(hasItem("_")));
+  }
+
+  @Test
   @Order(3)
   void listingFiltersByQueryAcrossNameDisplayNameAndType() {
     given().header("Authorization", "Bearer dev-token").get("/api/v1/views/items?query=tool").then()

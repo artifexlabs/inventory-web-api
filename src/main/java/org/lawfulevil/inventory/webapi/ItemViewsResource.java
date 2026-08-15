@@ -67,7 +67,8 @@ public class ItemViewsResource {
     List<JsonObject> pageItems = matched.stream().skip(from).limit(Math.max(1, size))
         .map(ItemViewsResource::withBelowMin).toList();
     return Response.ok(new JsonObject().put("items", new JsonArray(pageItems)).put("total", matched.size())
-        .put("page", page).put("size", size).put("query", query == null ? "" : query).encode()).build();
+        .put("page", page).put("size", size).put("query", query == null ? "" : query)
+        .put("types", knownTypes(all)).encode()).build();
   }
 
   @GET
@@ -96,7 +97,8 @@ public class ItemViewsResource {
 
     JsonObject detail = new JsonObject().put("item", item).put("children", children)
         .put("candidates", new JsonArray(candidates))
-        .put("history", new JsonArray(history)).put("assets", new JsonArray(assets));
+        .put("history", new JsonArray(history)).put("assets", new JsonArray(assets))
+        .put("types", knownTypes(all));
     if (container != null) {
       detail.put("container", new JsonObject().put("id", container.getString("id"))
           .put("name", container.getString("name")));
@@ -114,6 +116,20 @@ public class ItemViewsResource {
   }
 
   // --- shaping helpers --------------------------------------------------
+
+  /**
+   * Type suggestions for create/edit forms: every distinct type in use plus
+   * the conventional trio, minus the {@code "_"} storage placeholder. Type
+   * remains free-form — these are suggestions, never a closed vocabulary —
+   * and computing them here serves web and mobile alike.
+   */
+  private static JsonArray knownTypes(List<JsonObject> all) {
+    java.util.TreeSet<String> types = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    types.addAll(List.of("container", "location", "thing"));
+    all.stream().map(i -> i.getString("type")).filter(t -> t != null && !t.isBlank() && !"_".equals(t))
+        .forEach(types::add);
+    return new JsonArray(List.copyOf(types));
+  }
 
   private static List<JsonObject> objects(JsonArray array) {
     return array.stream().map(JsonObject.class::cast).toList();
