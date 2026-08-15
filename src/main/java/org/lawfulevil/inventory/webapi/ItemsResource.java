@@ -184,14 +184,49 @@ public class ItemsResource {
   public CompletionStage<Response> uploadAsset(@PathParam("itemId") String itemId,
       @jakarta.ws.rs.HeaderParam(AssetsResource.FILENAME_HEADER) String filename,
       @jakarta.ws.rs.HeaderParam("Content-Type") String contentType,
-      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng, byte[] body) {
+      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng,
+      @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
     String name = filename == null || filename.isBlank() ? "unnamed" : filename;
     String type = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM : contentType;
     // explicit client coordinates (a phone's GPS at capture) beat EXIF
     var upload = new DefaultAssetUpload(itemId, name, type, body,
-        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty());
+        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(),
+        kind);
     return BusResponses.respond(this.bus.request(BusActions.ASSETS_STORE, itemId, upload.toJson()),
         info -> Response.status(Response.Status.CREATED).entity(((JsonObject) info).encode()).build());
+  }
+
+  /**
+   * A picture that IS a thing (ongoing item 2): create a NEW item — typically
+   * {@code type=location} — with the uploaded photo attached, one
+   * transaction. Coordinates: explicit {@code lat}/{@code long} beat EXIF;
+   * either pins the created item itself. 404 when {@code container} names an
+   * unknown item.
+   */
+  @POST
+  @Path("/from-photo")
+  @Consumes(MediaType.WILDCARD)
+  public CompletionStage<Response> createItemFromPhoto(
+      @jakarta.ws.rs.QueryParam("name") String name,
+      @jakarta.ws.rs.QueryParam("displayName") String displayName,
+      @jakarta.ws.rs.QueryParam("type") String type,
+      @jakarta.ws.rs.QueryParam("container") String containerId,
+      @jakarta.ws.rs.HeaderParam(AssetsResource.FILENAME_HEADER) String filename,
+      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType,
+      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng,
+      @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
+    if (name == null || name.isBlank())
+      return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
+          .entity(new JsonObject().put("error", "name is required").encode()).build());
+    String fname = filename == null || filename.isBlank() ? "unnamed" : filename;
+    String ctype = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM
+        : contentType;
+    var req = new org.lawfulevil.inventory.impl.bus.DefaultPhotoItemRequest(name, displayName, type, containerId,
+        fname, ctype, body,
+        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(),
+        kind);
+    return BusResponses.respond(this.bus.request(BusActions.ASSETS_CREATE_ITEM, null, req.toJson()),
+        made -> Response.status(Response.Status.CREATED).entity(((JsonObject) made).encode()).build());
   }
 
   @GET

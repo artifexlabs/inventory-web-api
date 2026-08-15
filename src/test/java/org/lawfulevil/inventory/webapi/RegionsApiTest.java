@@ -93,6 +93,53 @@ public class RegionsApiTest {
   }
 
   @Test
+  public void testCreateItemFromPhoto() {
+    // ongoing item 2: one call — item created, photo attached, EXIF pins it
+    JsonObject made = new JsonObject(authed().header("X-Filename", "garage.jpg").contentType("image/jpeg")
+        .body(jpegWithGps()).post("/api/v1/items/from-photo?name=photo-garage&type=location").then()
+        .statusCode(201).extract().asString());
+    JsonObject item = made.getJsonObject("item");
+    JsonObject asset = made.getJsonObject("asset");
+    Assertions.assertEquals("location", item.getString("type"));
+    Assertions.assertNotNull(item.getDouble("latitude"), "EXIF pinned the created place itself");
+    Assertions.assertEquals(item.getString("id"), asset.getString("itemId"));
+    Assertions.assertEquals("photo", asset.getString("kind"));
+    authed().get("/api/v1/items/" + item.getString("id") + "/assets").then().statusCode(200)
+        .body("size()", equalTo(1));
+    authed().get("/api/v1/audit/target/" + item.getString("id")).then().statusCode(200)
+        .body("action", hasItem("item.create")).body("action", hasItem("asset.attach"));
+
+    // contained + map-kind variant (ongoing item 3 rides the same call)
+    JsonObject wall = new JsonObject(authed().header("X-Filename", "plan.png").contentType("image/png")
+        .body(jpegNoGps())
+        .post("/api/v1/items/from-photo?name=wall-map&type=location&kind=map&container=" + item.getString("id"))
+        .then().statusCode(201).extract().asString());
+    Assertions.assertEquals("map", wall.getJsonObject("asset").getString("kind"));
+    authed().get("/api/v1/items/" + wall.getJsonObject("item").getString("id") + "/container").then()
+        .statusCode(200).body("id", equalTo(item.getString("id")));
+
+    // refusals: missing name, unknown container
+    authed().contentType("image/png").body(jpegNoGps()).post("/api/v1/items/from-photo").then().statusCode(400);
+    authed().contentType("image/png").body(jpegNoGps())
+        .post("/api/v1/items/from-photo?name=x&container=missing").then().statusCode(404);
+  }
+
+  @Test
+  public void testMapKindRoundTripsOnPlainUpload() {
+    String wallId = createItem("wall", "location");
+    String assetId = uploadImage(wallId, jpegNoGps(), "?kind=map");
+    authed().get("/api/v1/items/" + wallId + "/assets").then().statusCode(200)
+        .body("[0].kind", equalTo("map")).body("[0].id", equalTo(assetId));
+    // boxes on a map become places through the SAME make-item call
+    String placeId = new JsonObject(authed().contentType(ContentType.JSON)
+        .body(new JsonObject().put("x", 0.1).put("y", 0.1).put("w", 0.3).put("h", 0.3)
+            .put("name", "corner-shelf").put("type", "location").put("containerId", wallId).encode())
+        .post("/api/v1/assets/" + assetId + "/regions/make-item").then().statusCode(201)
+        .body("type", equalTo("location")).extract().asString()).getString("id");
+    authed().get("/api/v1/items/" + placeId + "/container").then().statusCode(200).body("id", equalTo(wallId));
+  }
+
+  @Test
   public void testOneShotCreateItemFromRegion() {
     String spaceId = createItem("workbench", "container");
     String assetId = uploadImage(spaceId, jpegNoGps(), "");
