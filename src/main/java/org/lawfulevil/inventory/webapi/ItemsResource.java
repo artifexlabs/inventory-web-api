@@ -151,6 +151,43 @@ public class ItemsResource {
         body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
+  /** Claim a physical marker ({kind, value}) for an item; 409 when the marker already claims another item. */
+  @PUT
+  @Path("/{id}/identities")
+  public CompletionStage<Response> addIdentity(@PathParam("id") String id, String body) {
+    JsonObject j = new JsonObject(body);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_IDENTITY_ADD, id, j),
+        v -> Response.noContent().build());
+  }
+
+  @DELETE
+  @Path("/{id}/identities/{kind}/{value}")
+  public CompletionStage<Response> removeIdentity(@PathParam("id") String id, @PathParam("kind") String kind,
+      @PathParam("value") String value) {
+    return BusResponses.respond(
+        this.bus.request(BusActions.ITEMS_IDENTITY_REMOVE, id,
+            new JsonObject().put("kind", kind).put("value", value)),
+        v -> Response.noContent().build());
+  }
+
+  @GET
+  @Path("/{id}/identities")
+  public CompletionStage<Response> identitiesOf(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_IDENTITIES_OF, id, null),
+        body -> Response.ok(((JsonArray) body).encode()).build());
+  }
+
+  /** The item a scanned marker resolves to: ?kind=upc&value=012345678905 → item or 404. */
+  @GET
+  @Path("/by-identity")
+  public CompletionStage<Response> findByIdentity(@jakarta.ws.rs.QueryParam("kind") String kind,
+      @jakarta.ws.rs.QueryParam("value") String value) {
+    return BusResponses.respond(
+        this.bus.request(BusActions.ITEMS_FIND_BY_IDENTITY, null,
+            new JsonObject().put("kind", kind).put("value", value)),
+        body -> Response.ok(((JsonObject) body).encode()).build());
+  }
+
   @PUT
   @Path("/{containerId}/contained/{itemId}")
   public CompletionStage<Response> addToContainer(@PathParam("containerId") String containerId,

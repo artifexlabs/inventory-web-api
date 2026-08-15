@@ -133,4 +133,44 @@ public class AuthAndContainmentTest {
     withToken(token).delete("/api/v1/items/" + crate + "/tags/color").then().statusCode(204);
     withToken(token).get("/api/v1/items/by-tag?key=color").then().statusCode(200).body("size()", is(0));
   }
+
+  @Test
+  public void testItemIdentityEndpoints() {
+    String token = "dev-token";
+    String scanner = create(token, "scanner", "ident-tool");
+    String rival = create(token, "rival", "ident-tool");
+
+    // claim a UPC and an NFC UID for the scanner
+    withToken(token).contentType(ContentType.JSON)
+        .body(new JsonObject().put("kind", "upc").put("value", "012345678905").encode())
+        .put("/api/v1/items/" + scanner + "/identities").then().statusCode(204);
+    withToken(token).contentType(ContentType.JSON)
+        .body(new JsonObject().put("kind", "NFC-UID").put("value", "04:A2:B3").encode())
+        .put("/api/v1/items/" + scanner + "/identities").then().statusCode(204);
+
+    // a scanned marker resolves to the item (kind normalized to lowercase)
+    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200)
+        .body("id", equalTo(scanner));
+    withToken(token).get("/api/v1/items/by-identity?kind=nfc-uid&value=04:A2:B3").then().statusCode(200)
+        .body("id", equalTo(scanner));
+    withToken(token).get("/api/v1/items/" + scanner + "/identities").then().statusCode(200)
+        .body("size()", is(2)).body("[1].kind", equalTo("upc"));
+
+    // reusing a claimed marker on another item is a 409, and nothing moves
+    withToken(token).contentType(ContentType.JSON)
+        .body(new JsonObject().put("kind", "upc").put("value", "012345678905").encode())
+        .put("/api/v1/items/" + rival + "/identities").then().statusCode(409);
+    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200)
+        .body("id", equalTo(scanner));
+
+    // release frees the marker; unknown markers and blank claims are refused
+    withToken(token).delete("/api/v1/items/" + scanner + "/identities/upc/012345678905").then().statusCode(204);
+    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(404);
+    withToken(token).delete("/api/v1/items/" + scanner + "/identities/upc/012345678905").then().statusCode(404);
+    withToken(token).contentType(ContentType.JSON).body(new JsonObject().put("kind", "upc").encode())
+        .put("/api/v1/items/" + scanner + "/identities").then().statusCode(400);
+    withToken(token).contentType(ContentType.JSON)
+        .body(new JsonObject().put("kind", "upc").put("value", "1").encode())
+        .put("/api/v1/items/missing-item/identities").then().statusCode(404);
+  }
 }
