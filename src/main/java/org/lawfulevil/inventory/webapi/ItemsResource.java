@@ -105,10 +105,49 @@ public class ItemsResource {
         v -> Response.noContent().build());
   }
 
+  /** The single container (Phase 15 tree); 404 when the item is a root. */
   @GET
-  @Path("/{id}/containers")
-  public CompletionStage<Response> getContainers(@PathParam("id") String id) {
-    return BusResponses.respond(this.bus.request(BusActions.ITEMS_CONTAINERS_OF, id, null),
+  @Path("/{id}/container")
+  public CompletionStage<Response> getContainer(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_CONTAINER_OF, id, null),
+        body -> Response.ok(((JsonObject) body).encode()).build());
+  }
+
+  /** Own pin, else the nearest pinned ancestor's; 404 when nothing is pinned. */
+  @GET
+  @Path("/{id}/coordinates")
+  public CompletionStage<Response> effectiveCoordinates(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_COORDINATES, id, null),
+        body -> Response.ok(((JsonObject) body).encode()).build());
+  }
+
+  /** Attach a tag ({key, value?}), replacing any same-key tag. */
+  @PUT
+  @Path("/{id}/tags")
+  public CompletionStage<Response> tag(@PathParam("id") String id, String body) {
+    JsonObject j = new JsonObject(body);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_TAG, id, j),
+        v -> Response.noContent().build());
+  }
+
+  @DELETE
+  @Path("/{id}/tags/{key}")
+  public CompletionStage<Response> untag(@PathParam("id") String id, @PathParam("key") String key) {
+    return BusResponses.respond(
+        this.bus.request(BusActions.ITEMS_UNTAG, id, new JsonObject().put("key", key)),
+        v -> Response.noContent().build());
+  }
+
+  /** Items carrying a matching tag: ?key=...&value=...&mode=exact|glob|regex */
+  @GET
+  @Path("/by-tag")
+  public CompletionStage<Response> findByTag(@jakarta.ws.rs.QueryParam("key") String key,
+      @jakarta.ws.rs.QueryParam("value") String value,
+      @jakarta.ws.rs.QueryParam("mode") @jakarta.ws.rs.DefaultValue("exact") String mode) {
+    JsonObject query = new JsonObject().put("keyPattern", key).put("mode", mode.toUpperCase(java.util.Locale.ROOT));
+    if (value != null && !value.isBlank())
+      query.put("valuePattern", value);
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_FIND_BY_TAG, null, query),
         body -> Response.ok(((JsonArray) body).encode()).build());
   }
 

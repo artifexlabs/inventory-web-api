@@ -78,8 +78,8 @@ public class RegionsApiTest {
         .post("/api/v1/regions/" + box1 + "/make-item").then().statusCode(201)
         .body("name", equalTo("hammer")).extract().asString()).getString("id");
 
-    authed().get("/api/v1/items/" + hammerId + "/containers").then().statusCode(200)
-        .body("id", hasItem(spaceId));
+    authed().get("/api/v1/items/" + hammerId + "/container").then().statusCode(200)
+        .body("id", equalTo(spaceId));
     JsonArray regions = new JsonArray(
         authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).extract().asString());
     Assertions.assertEquals(hammerId, regions.stream().map(o -> (JsonObject) o)
@@ -103,7 +103,7 @@ public class RegionsApiTest {
         .getString("id");
     authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).body("size()", equalTo(1))
         .body("[0].itemId", equalTo(wrenchId));
-    authed().get("/api/v1/items/" + wrenchId + "/containers").then().statusCode(200).body("id", hasItem(spaceId));
+    authed().get("/api/v1/items/" + wrenchId + "/container").then().statusCode(200).body("id", equalTo(spaceId));
   }
 
   @Test

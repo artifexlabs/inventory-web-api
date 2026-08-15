@@ -81,26 +81,35 @@ public class ItemViewsResource {
     }
 
     JsonArray children = item.getJsonArray("containedItems", new JsonArray());
-    List<JsonObject> containers = objects(
-        (JsonArray) join(this.bus.request(BusActions.ITEMS_CONTAINERS_OF, id, null)));
-    List<JsonObject> candidates = objects((JsonArray) join(this.bus.request(BusActions.ITEMS_LIST, null, null)))
-        .stream().filter(i -> !id.equals(i.getString("id")))
+    List<JsonObject> all = objects((JsonArray) join(this.bus.request(BusActions.ITEMS_LIST, null, null)));
+    // one hierarchy since Phase 15: any other item can be the container
+    List<JsonObject> candidates = all.stream().filter(i -> !id.equals(i.getString("id")))
         .map(i -> new JsonObject().put("id", i.getString("id")).put("name", i.getString("name"))).toList();
     List<JsonObject> history = objects((JsonArray) join(
         this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", 20))));
-    List<JsonObject> locations = objects((JsonArray) join(this.bus.request(BusActions.LOCATIONS_LIST, null, null)));
     List<JsonObject> assets = objects((JsonArray) join(this.bus.request(BusActions.ASSETS_LIST_FOR, id, null)));
 
-    String locationName = item.getString("locationId") == null ? null
-        : locations.stream().filter(l -> item.getString("locationId").equals(l.getString("id")))
-            .map(l -> l.getString("name")).findFirst().orElse(null);
+    // the container itself, resolved from the flat list (no extra round trip)
+    String containerId = item.getString("containerId");
+    JsonObject container = containerId == null ? null
+        : all.stream().filter(i -> containerId.equals(i.getString("id"))).findFirst().orElse(null);
 
     JsonObject detail = new JsonObject().put("item", item).put("children", children)
-        .put("containers", new JsonArray(containers)).put("candidates", new JsonArray(candidates))
-        .put("history", new JsonArray(history)).put("locations", new JsonArray(locations))
-        .put("assets", new JsonArray(assets));
-    if (locationName != null)
-      detail.put("locationName", locationName);
+        .put("candidates", new JsonArray(candidates))
+        .put("history", new JsonArray(history)).put("assets", new JsonArray(assets));
+    if (container != null) {
+      detail.put("container", new JsonObject().put("id", container.getString("id"))
+          .put("name", container.getString("name")));
+      // the old UI key, kept so pages read naturally: "where is this thing"
+      detail.put("locationName", container.getString("displayName", container.getString("name")));
+    }
+    // effective coordinates: own pin or inherited — absent when nothing is pinned
+    try {
+      detail.put("effectiveCoordinates",
+          (JsonObject) join(this.bus.request(BusActions.ITEMS_COORDINATES, id, null)));
+    } catch (CompletionException nothingPinned) {
+      // absent key = no pin anywhere in the chain
+    }
     return Response.ok(detail.encode()).build();
   }
 

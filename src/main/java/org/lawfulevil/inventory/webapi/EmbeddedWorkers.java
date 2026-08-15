@@ -26,7 +26,6 @@ import org.lawfulevil.inventory.api.AuditSink;
 import org.lawfulevil.inventory.api.InventorySystem;
 import org.lawfulevil.inventory.api.InventoryUser;
 import org.lawfulevil.inventory.api.LabelPrinter;
-import org.lawfulevil.inventory.api.LocationSystem;
 import org.lawfulevil.inventory.api.RegionSystem;
 import org.lawfulevil.inventory.api.TokenService;
 import org.lawfulevil.inventory.impl.InMemoryTokenService;
@@ -70,14 +69,14 @@ public class EmbeddedWorkers {
   Vertx vertx;
 
   void onStart(@Observes StartupEvent ev, Instance<InventorySystem> inventory,
-      Instance<LocationSystem> locations, Instance<AssetStore> assets, Instance<RegionSystem> regions,
+      Instance<AssetStore> assets, Instance<RegionSystem> regions,
       Instance<AuditReader> auditReader, Instance<AuditSink> auditSink, Instance<LabelPrinter> printer,
       Instance<UserStore> users, Instance<TokenService> tokens) {
     if (!"embedded".equals(this.mode)) {
       log.info("bus workers remote: the gateway sends envelopes to inventory-server");
       return;
     }
-    var services = new BusWorkers.BackendServices(inventory.get(), locations.get(), assets.get(), regions.get(),
+    var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(),
         auditReader.get(), auditSink.get(), printer.get(), users.get(), tokens.get());
     try {
       BusWorkers.deploy(this.vertx, services, new BusGuard(this.fabricToken), this.provision).toCompletableFuture()

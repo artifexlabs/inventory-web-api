@@ -41,26 +41,28 @@ public class Phase3ResourcesTest {
   }
 
   @Test
-  public void testLocationLifecycleWithReferenceGuard() {
+  public void testPlaceIsAContainerWithCoordinates() {
+    // Phase 15: a "location" is an item with coordinates that holds things
     String loc = new JsonObject(authed()
-        .body(new JsonObject().put("name", "Garage").put("latitude", 33.7).put("longitude", -84.4).encode())
-        .post("/api/v1/locations").then().statusCode(201).body("name", equalTo("Garage")).extract().asString())
+        .body(new JsonObject().put("name", "Garage").put("type", "location").encode())
+        .post("/api/v1/items").then().statusCode(201).body("name", equalTo("Garage")).extract().asString())
         .getString("id");
+    JsonObject pinned = new JsonObject(
+        authed().get("/api/v1/items/" + loc).then().extract().asString())
+        .put("latitude", 33.7).put("longitude", -84.4);
+    authed().body(pinned.encode()).put("/api/v1/items/" + loc).then().statusCode(200)
+        .body("latitude", is(33.7f));
 
-    authed().get("/api/v1/locations/" + loc).then().statusCode(200).body("latitude", is(33.7f));
-
-    // point an item at it: delete now conflicts
+    // contain an item in it: the item inherits the garage's pin
     String item = createItem("located-thing");
-    JsonObject full = new JsonObject(
-        authed().get("/api/v1/items/" + item).then().extract().asString()).put("locationId", loc);
-    authed().body(full.encode()).put("/api/v1/items/" + item).then().statusCode(200);
-    authed().delete("/api/v1/locations/" + loc).then().statusCode(409);
+    authed().put("/api/v1/items/" + loc + "/contained/" + item).then().statusCode(204);
+    authed().get("/api/v1/items/" + item + "/coordinates").then().statusCode(200)
+        .body("latitude", is(33.7f)).body("longitude", is(-84.4f));
 
-    // release the reference: delete succeeds, then 404s
-    full.remove("locationId");
-    authed().body(full.encode()).put("/api/v1/items/" + item).then().statusCode(200);
-    authed().delete("/api/v1/locations/" + loc).then().statusCode(204);
-    authed().delete("/api/v1/locations/" + loc).then().statusCode(404);
+    // deleting the place orphans the item (no cascade, no reference guard)
+    authed().delete("/api/v1/items/" + loc).then().statusCode(204);
+    authed().get("/api/v1/items/" + item + "/container").then().statusCode(404);
+    authed().get("/api/v1/items/" + item + "/coordinates").then().statusCode(404);
   }
 
   @Test

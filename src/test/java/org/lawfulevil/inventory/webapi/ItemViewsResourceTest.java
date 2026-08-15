@@ -86,12 +86,12 @@ class ItemViewsResourceTest {
     wrench.put("quantity", 1).put("parValues", new JsonObject().put("minOnHand", 5).put("maxOnHand", 50));
     update(wrench);
 
-    // location + placement for the detail view
-    String garageId = new JsonObject(given().header("Authorization", "Bearer dev-token")
-        .contentType(ContentType.JSON).body(new JsonObject().put("name", "Garage").encode())
-        .post("/api/v1/locations").then().statusCode(201).extract().asString()).getString("id");
+    // pin the shelf: the detail view derives placement from containment
+    JsonObject shelf = fetch(shelfId);
+    shelf.put("latitude", 33.7).put("longitude", -84.4);
+    update(shelf);
     JsonObject box = fetch(boxId);
-    box.put("locationId", garageId);
+    box.put("description", "red toolbox");
     update(box); // also the most recent audit action for the box: item.update
 
     // containment: shelf > box > wrench
@@ -138,13 +138,13 @@ class ItemViewsResourceTest {
         .statusCode(200)
         .body("item.name", equalTo("toolbox"))
         .body("children[0].id", equalTo(wrenchId))
-        .body("containers[0].id", equalTo(shelfId))
+        .body("container.id", equalTo(shelfId))
         .body("candidates.id", hasItem(wrenchId))
         .body("candidates.id", not(hasItem(boxId)))
         .body("history.action", hasItem("item.update"))
-        .body("locations[0].name", equalTo("Garage"))
         .body("assets[0].filename", equalTo("photo.png"))
-        .body("locationName", equalTo("Garage"));
+        .body("locationName", equalTo("shelf"))
+        .body("effectiveCoordinates.latitude", equalTo(33.7f));
   }
 
   @Test

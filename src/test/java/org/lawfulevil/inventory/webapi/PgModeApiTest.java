@@ -37,7 +37,7 @@ import io.vertx.core.json.JsonObject;
  * The whole REST surface against inventory.storage=pg — real Postgres, real
  * Liquibase schema. Covers InventoryBackendProducer's pg arms with behavior:
  * login (PgUserStore + PgTokenService), item CRUD + audit (PgInventorySystem
- * + PgAudit), locations (PgLocationSystem), assets (PgAssetStore).
+ * + PgAudit), places-as-containers with tags, assets (PgAssetStore).
  */
 @QuarkusTest
 @TestProfile(PgModeApiTest.PgProfile.class)
@@ -84,12 +84,26 @@ public class PgModeApiTest {
 
   @Test
   @Order(3)
-  public void locationsUseThePgStore() {
-    String locationId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .body(new JsonObject().put("name", "pg-shelf").encode()).post("/api/v1/locations").then()
-        .statusCode(201).extract().path("id");
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/locations").then().statusCode(200)
-        .body("id", hasItem(locationId));
+  public void placesTagsAndCoordinatesUseThePgStore() {
+    // a place is a container with coordinates (Phase 15)
+    String placeId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
+        .body(new JsonObject().put("name", "pg-shelf").put("type", "location").encode())
+        .post("/api/v1/items").then().statusCode(201).extract().path("id");
+    JsonObject pinned = new JsonObject(given().header("Authorization", "Bearer " + token())
+        .get("/api/v1/items/" + placeId).then().extract().asString())
+        .put("latitude", 10.5).put("longitude", 20.5);
+    given().header("Authorization", "Bearer " + token()).contentType("application/json").body(pinned.encode())
+        .put("/api/v1/items/" + placeId).then().statusCode(200);
+    given().header("Authorization", "Bearer " + token())
+        .put("/api/v1/items/" + placeId + "/contained/" + itemId).then().statusCode(204);
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + itemId + "/coordinates")
+        .then().statusCode(200).body("latitude", equalTo(10.5f));
+    // tags round-trip through item_tags
+    given().header("Authorization", "Bearer " + token()).contentType("application/json")
+        .body(new JsonObject().put("key", "pgtag").put("value", "v1").encode())
+        .put("/api/v1/items/" + itemId + "/tags").then().statusCode(204);
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/by-tag?key=pgtag").then()
+        .statusCode(200).body("size()", equalTo(1));
   }
 
   @Test
@@ -121,8 +135,8 @@ public class PgModeApiTest {
         .body(new JsonObject().put("name", "pg-region-tool").put("type", "tool").put("containerId", itemId)
             .encode())
         .post("/api/v1/regions/" + boxId + "/make-item").then().statusCode(201).extract().path("id");
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + toolId + "/containers").then()
-        .statusCode(200).body("id", hasItem(itemId));
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + toolId + "/container").then()
+        .statusCode(200).body("id", equalTo(itemId));
     given().header("Authorization", "Bearer " + token()).get("/api/v1/assets/" + assetId + "/regions").then()
         .statusCode(200).body("[0].itemId", equalTo(toolId));
     given().header("Authorization", "Bearer " + token()).get("/api/v1/audit/target/" + toolId).then()
@@ -155,7 +169,7 @@ public class PgModeApiTest {
     // Self-logout is not audited (only admin revocations are); the pg audit
     // trail carries the mutations from the earlier tests.
     given().header("Authorization", "Bearer " + fresh).get("/api/v1/audit?limit=50&offset=0").then()
-        .statusCode(200).body("action", hasItem("item.create")).body("action", hasItem("location.create"))
+        .statusCode(200).body("action", hasItem("item.create")).body("action", hasItem("item.tag"))
         .body("action", hasItem("asset.attach"));
     given().header("Authorization", "Bearer " + fresh).get("/api/v1/items/" + itemId).then().statusCode(200)
         .body("name", equalTo("pg-item"));

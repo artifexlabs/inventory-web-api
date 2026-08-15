@@ -87,16 +87,50 @@ public class AuthAndContainmentTest {
     String bolt = create(token, "bolt", "cont-part");
 
     withToken(token).put("/api/v1/items/" + box + "/contained/" + bolt).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/containers").then().statusCode(200).body("size()", is(1))
-        .body("[0].id", equalTo(box));
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
+        .body("id", equalTo(box));
 
-    withToken(token).post("/api/v1/items/" + bolt + "/move-to/" + bin).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/containers").then().statusCode(200).body("size()", is(1))
-        .body("[0].id", equalTo(bin));
+    // single-parent tree: contain into a second container RE-PARENTS
+    withToken(token).put("/api/v1/items/" + bin + "/contained/" + bolt).then().statusCode(204);
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
+        .body("id", equalTo(bin));
 
-    withToken(token).delete("/api/v1/items/" + bin + "/contained/" + bolt).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/containers").then().statusCode(200).body("size()", is(0));
-    withToken(token).delete("/api/v1/items/" + bin + "/contained/" + bolt).then().statusCode(404);
+    withToken(token).post("/api/v1/items/" + bolt + "/move-to/" + box).then().statusCode(204);
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
+        .body("id", equalTo(box));
+
+    withToken(token).delete("/api/v1/items/" + box + "/contained/" + bolt).then().statusCode(204);
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(404); // a root
+    withToken(token).delete("/api/v1/items/" + box + "/contained/" + bolt).then().statusCode(404);
     withToken(token).put("/api/v1/items/missing/contained/" + bolt).then().statusCode(404);
+
+    // cycle refusal end to end: box > bin, then bin cannot contain box
+    withToken(token).put("/api/v1/items/" + box + "/contained/" + bin).then().statusCode(204);
+    withToken(token).put("/api/v1/items/" + bin + "/contained/" + box).then().statusCode(404);
+  }
+
+  @Test
+  public void testTagsAndCoordinatesEndpoints() {
+    String token = "dev-token";
+    String garage = create(token, "tag-garage", "location");
+    String crate = create(token, "tag-crate", "cont-box");
+
+    // pin the garage, contain the crate, and the crate inherits
+    JsonObject full = new JsonObject(withToken(token).get("/api/v1/items/" + garage)
+        .then().statusCode(200).extract().asString()).put("latitude", 33.7).put("longitude", -84.4);
+    withToken(token).contentType(ContentType.JSON).body(full.encode())
+        .put("/api/v1/items/" + garage).then().statusCode(200);
+    withToken(token).put("/api/v1/items/" + garage + "/contained/" + crate).then().statusCode(204);
+    withToken(token).get("/api/v1/items/" + crate + "/coordinates").then().statusCode(200)
+        .body("latitude", is(33.7f));
+
+    // tags: attach, search, remove
+    withToken(token).contentType(ContentType.JSON)
+        .body(new JsonObject().put("key", "color").put("value", "orange").encode())
+        .put("/api/v1/items/" + crate + "/tags").then().statusCode(204);
+    withToken(token).get("/api/v1/items/by-tag?key=color&value=ora*&mode=glob").then().statusCode(200)
+        .body("size()", is(1)).body("[0].id", equalTo(crate));
+    withToken(token).delete("/api/v1/items/" + crate + "/tags/color").then().statusCode(204);
+    withToken(token).get("/api/v1/items/by-tag?key=color").then().statusCode(200).body("size()", is(0));
   }
 }
