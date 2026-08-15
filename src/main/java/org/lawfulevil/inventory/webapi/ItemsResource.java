@@ -183,9 +183,12 @@ public class ItemsResource {
   @POST
   @Path("/{id}/print-label")
   @Consumes(MediaType.WILDCARD)
-  public CompletionStage<Response> printLabel(@PathParam("id") String id) {
-    return BusResponses.respond(
-        this.bus.request(BusActions.LABELS_PRINT, id, new JsonObject().put("url", scanUrl(id))),
+  public CompletionStage<Response> printLabel(@PathParam("id") String id,
+      @jakarta.ws.rs.QueryParam("format") String format) {
+    JsonObject data = new JsonObject().put("url", scanUrl(id));
+    if (format != null && !format.isBlank())
+      data.put("format", format); // named label format; absent = printer default
+    return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT, id, data),
         v -> Response.noContent().build());
   }
 }
