@@ -71,13 +71,14 @@ public class EmbeddedWorkers {
   void onStart(@Observes StartupEvent ev, Instance<InventorySystem> inventory,
       Instance<AssetStore> assets, Instance<RegionSystem> regions,
       Instance<AuditReader> auditReader, Instance<AuditSink> auditSink, Instance<LabelPrinter> printer,
-      Instance<UserStore> users, Instance<TokenService> tokens) {
+      Instance<UserStore> users, Instance<TokenService> tokens,
+      Instance<org.lawfulevil.inventory.api.UpcCatalog> catalog) {
     if (!"embedded".equals(this.mode)) {
       log.info("bus workers remote: the gateway sends envelopes to inventory-server");
       return;
     }
     var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(),
-        auditReader.get(), auditSink.get(), printer.get(), users.get(), tokens.get());
+        auditReader.get(), auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get());
     try {
       BusWorkers.deploy(this.vertx, services, new BusGuard(this.fabricToken), this.provision).toCompletableFuture()
           .get(30, TimeUnit.SECONDS);

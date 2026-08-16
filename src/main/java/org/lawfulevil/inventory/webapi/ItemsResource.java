@@ -282,6 +282,26 @@ public class ItemsResource {
     return this.qrBaseUrl + "/i/" + id;
   }
 
+  /**
+   * A scanned barcode that IS a thing: catalog prefill + item + identity +
+   * tags + image asset, one worker-side flow (the catalog is prefill —
+   * a miss still creates from the body). Body fields (name, displayName,
+   * type, description, weightGrams) override the catalog. 201 {item,
+   * asset?}; 400 bad check digit or no name from either side; 404 unknown
+   * container; 409 when the code already claims another item.
+   */
+  @POST
+  @Path("/from-upc")
+  public CompletionStage<Response> createItemFromUpc(@jakarta.ws.rs.QueryParam("gtin") String gtin,
+      @jakarta.ws.rs.QueryParam("container") String containerId, String body) {
+    JsonObject data = body == null || body.isBlank() ? new JsonObject() : new JsonObject(body);
+    data.put("gtin", gtin);
+    if (containerId != null && !containerId.isBlank())
+      data.put("container", containerId);
+    return BusResponses.respond(this.bus.request(BusActions.CATALOG_CREATE_ITEM, null, data),
+        made -> Response.status(Response.Status.CREATED).entity(((JsonObject) made).encode()).build());
+  }
+
   @GET
   @Path("/{id}/qr.png")
   @Produces("image/png")
