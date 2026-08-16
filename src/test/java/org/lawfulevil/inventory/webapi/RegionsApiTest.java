@@ -93,6 +93,28 @@ public class RegionsApiTest {
   }
 
   @Test
+  public void testDotDenotesAnItemWithoutABox() {
+    // ongoing item 8: a zero-size region is a point marker — same
+    // draw-then-describe lifecycle as a box, no drawing required
+    String spaceId = createItem("pegboard", "container");
+    String assetId = uploadImage(spaceId, jpegNoGps(), "");
+
+    String dot = new JsonObject(authed().contentType(ContentType.JSON)
+        .body(new JsonObject().put("x", 0.5).put("y", 0.25).put("w", 0).put("h", 0).encode())
+        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201)
+        .body("itemId", nullValue()).extract().asString()).getString("id");
+    authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200)
+        .body("size()", equalTo(1)).body("[0].w", equalTo(0.0f)).body("[0].h", equalTo(0.0f));
+
+    String plierId = new JsonObject(authed().contentType(ContentType.JSON)
+        .body(new JsonObject().put("name", "pliers").put("type", "tool").put("containerId", spaceId).encode())
+        .post("/api/v1/regions/" + dot + "/make-item").then().statusCode(201)
+        .body("name", equalTo("pliers")).extract().asString()).getString("id");
+    authed().get("/api/v1/items/" + plierId + "/container").then().statusCode(200)
+        .body("id", equalTo(spaceId));
+  }
+
+  @Test
   public void testCreateItemFromPhoto() {
     // ongoing item 2: one call — item created, photo attached, EXIF pins it
     JsonObject made = new JsonObject(authed().header("X-Filename", "garage.jpg").contentType("image/jpeg")
