@@ -71,4 +71,14 @@ public class QrAndLabelTest {
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/nope/print-label").then()
         .statusCode(404);
   }
+
+  @Test
+  public void testFeedExtendsTheTapeAndAudits() {
+    // the log printer "feeds" (and logs); hardware printers send the real
+    // blank-feed job — the "extend the tape" action ending a chain run
+    given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/labels/feed").then().statusCode(204);
+    given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/printer").then().statusCode(200)
+        .body("action", org.hamcrest.Matchers.hasItem("label.feed"));
+    given().post("/api/v1/labels/feed").then().statusCode(401);
+  }
 }
