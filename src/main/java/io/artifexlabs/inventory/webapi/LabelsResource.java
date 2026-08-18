@@ -21,6 +21,8 @@ import java.util.concurrent.CompletionStage;
 
 import io.artifexlabs.inventory.api.bus.BusActions;
 
+import io.vertx.core.json.JsonObject;
+
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -40,6 +42,15 @@ public class LabelsResource {
   @Inject
   BusClient bus;
 
+  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url",
+      defaultValue = "http://localhost:8081")
+  String qrBaseUrl;
+
+  /** Public addressing is the gateway's knowledge; the worker renders it. */
+  private String scanUrl(String id) {
+    return this.qrBaseUrl + "/i/" + id;
+  }
+
   /**
    * Feed blank tape and cut — the "extend the tape" action that ends a
    * chain-printing run. 503 when the configured printer has nothing to feed
@@ -51,5 +62,39 @@ public class LabelsResource {
   public CompletionStage<Response> feed() {
     return BusResponses.respond(this.bus.request(BusActions.LABELS_FEED, null, null),
         v -> Response.noContent().build());
+  }
+
+  /**
+   * Print several labels as ONE printer job (ongoing item 10): on continuous
+   * tape they share a single leader instead of wasting ~25 mm per cut. Body:
+   * {@code {"itemIds":[...], "format":"large"?, "halfCut":true?}} —
+   * halfCut (default true) perforates between labels so the strip tears
+   * apart by hand; false takes a full cut between each. 400 on an empty list,
+   * 404 when any id is unknown (the whole run is refused rather than
+   * printing a partial strip), 503 when the printer refuses.
+   */
+  @POST
+  @Path("/print-batch")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> printBatch(String body) {
+    JsonObject in = body == null || body.isBlank() ? new JsonObject() : new JsonObject(body);
+    io.vertx.core.json.JsonArray ids = in.getJsonArray("itemIds");
+    if (ids == null || ids.isEmpty())
+      return java.util.concurrent.CompletableFuture.completedStage(Response
+          .status(Response.Status.BAD_REQUEST)
+          .entity(new JsonObject().put("error", "itemIds is required and must be non-empty").encode())
+          .build());
+    // public addressing belongs to this tier, so the scan URLs are resolved
+    // here and travel with the envelope
+    JsonObject urls = new JsonObject();
+    ids.forEach(o -> urls.put(String.valueOf(o), scanUrl(String.valueOf(o))));
+    JsonObject data = new JsonObject().put("itemIds", ids).put("urls", urls);
+    if (in.getString("format") != null)
+      data.put("format", in.getString("format"));
+    // half cut between labels unless explicitly disabled
+    if (in.getBoolean("halfCut") != null)
+      data.put("halfCut", in.getBoolean("halfCut"));
+    return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT_BATCH, null, data),
+        made -> Response.ok(((JsonObject) made).encode()).build());
   }
 }
