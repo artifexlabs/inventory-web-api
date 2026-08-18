@@ -1,0 +1,74 @@
+/*
+ * @formatter:off
+ * Copyright © 2019 admin (admin@artifexlabs.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * @formatter:on
+ */
+package io.artifexlabs.inventory.webapi;
+
+import org.jboss.resteasy.reactive.server.ServerRequestFilter;
+import io.artifexlabs.inventory.api.UserFactory;
+import io.artifexlabs.inventory.api.bus.BusActions;
+
+import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonObject;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
+/**
+ * Guards every REST resource with a bearer token, resolved to its user by
+ * the auth worker over the bus ({@code auth.token}, pre-auth: the fabric
+ * token vouches for the gateway itself). This is the authentication boundary
+ * the architecture demands: every external input crosses it here, and the
+ * user it resolves is what every subsequent envelope acts for. The login and
+ * exchange endpoints are the sole exemptions.
+ *
+ * Reactive on purpose: the filter runs on the Vert.x event loop and the bus
+ * round trip completes on one — joining here would deadlock. Returning a Uni
+ * lets the request suspend instead.
+ */
+public class BearerTokenFilter {
+
+  @Inject
+  BusClient bus;
+
+  @Inject
+  CurrentUser currentUser;
+
+  @ServerRequestFilter
+  public Uni<Response> filter(ContainerRequestContext requestContext) {
+    String path = requestContext.getUriInfo().getPath();
+    if (path.endsWith("/auth/login") || path.endsWith("/auth/exchange"))
+      return Uni.createFrom().nullItem();
+    String header = requestContext.getHeaderString(HttpHeaders.AUTHORIZATION);
+    String token = header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
+    if (token == null)
+      return Uni.createFrom().item(unauthorized());
+    return Uni.createFrom()
+        .completionStage(() -> this.bus.anonymous(BusActions.AUTH_TOKEN, new JsonObject().put("token", token)))
+        .map(user -> {
+          this.currentUser.set(UserFactory.deserialize((JsonObject) user));
+          return (Response) null;
+        })
+        .onFailure().recoverWithItem(BearerTokenFilter::unauthorized);
+  }
+
+  private static Response unauthorized() {
+    return Response.status(Response.Status.UNAUTHORIZED).type(MediaType.APPLICATION_JSON)
+        .entity(new JsonObject().put("error", "missing or invalid bearer token").encode()).build();
+  }
+}

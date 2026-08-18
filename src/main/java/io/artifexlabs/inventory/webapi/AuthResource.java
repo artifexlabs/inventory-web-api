@@ -1,0 +1,91 @@
+/*
+ * @formatter:off
+ * Copyright © 2019 admin (admin@artifexlabs.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * @formatter:on
+ */
+package io.artifexlabs.inventory.webapi;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+
+import io.artifexlabs.inventory.api.UserFactory;
+import io.artifexlabs.inventory.api.bus.BusActions;
+import io.artifexlabs.inventory.impl.bus.DefaultCredentials;
+
+import io.vertx.core.json.JsonObject;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
+/**
+ * Credential login granting API bearer tokens. {@code /login} is the only
+ * unauthenticated path in the API; everything else demands a token this
+ * endpoint (or an admin) issued. The credential check itself is bus work —
+ * user identity lives behind the fabric — sent pre-auth (fabric token only).
+ */
+@Path("/api/v1/auth")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class AuthResource {
+
+  @Inject
+  BusClient bus;
+
+  @POST
+  @Path("/login")
+  public CompletionStage<Response> login(String body) {
+    JsonObject j = new JsonObject(body == null || body.isBlank() ? "{}" : body);
+    String email = j.getString("email");
+    String password = j.getString("password");
+    if (email == null || password == null)
+      return CompletableFuture.completedStage(badCredentials());
+    var credentials = new DefaultCredentials(email, password);
+    return this.bus.anonymous(BusActions.AUTH_LOGIN, credentials.toJson())
+        .thenApply(granted -> Response.ok(((JsonObject) granted).encode()).build())
+        .exceptionally(e -> badCredentials());
+  }
+
+  @Inject
+  CurrentUser current;
+
+  /** Who does the presented token belong to, right now. */
+  @jakarta.ws.rs.GET
+  @Path("/me")
+  public Response me() {
+    return this.current.get()
+        .map(u -> Response.ok(UserFactory.serialize(u).encode()).build())
+        .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
+  }
+
+  @POST
+  @Path("/logout")
+  public CompletionStage<Response> logout(@HeaderParam(HttpHeaders.AUTHORIZATION) String authorization) {
+    String token = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7) : "";
+    return BusResponses.respond(
+        this.bus.anonymous(BusActions.AUTH_REVOKE, new JsonObject().put("token", token)),
+        body -> Response.ok(((JsonObject) body).encode()).build());
+  }
+
+  private static Response badCredentials() {
+    return Response.status(Response.Status.UNAUTHORIZED)
+        .entity(new JsonObject().put("error", "invalid credentials").encode()).build();
+  }
+}
