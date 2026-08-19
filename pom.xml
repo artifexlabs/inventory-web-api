@@ -88,12 +88,10 @@
     <dependency>
       <groupId>org.infinispan</groupId>
       <artifactId>infinispan-core-jakarta</artifactId>
-      <version>14.0.20.Final</version>
     </dependency>
     <dependency>
       <groupId>org.infinispan</groupId>
       <artifactId>infinispan-multimap-jakarta</artifactId>
-      <version>14.0.20.Final</version>
       <exclusions>
         <exclusion>
           <groupId>org.infinispan</groupId>
@@ -116,12 +114,10 @@
     <dependency>
       <groupId>com.google.zxing</groupId>
       <artifactId>core</artifactId>
-      <version>3.5.3</version>
     </dependency>
     <dependency>
       <groupId>com.google.zxing</groupId>
       <artifactId>javase</artifactId>
-      <version>3.5.3</version>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
