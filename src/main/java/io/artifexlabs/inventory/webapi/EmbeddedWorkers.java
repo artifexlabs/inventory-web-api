@@ -80,7 +80,8 @@ public class EmbeddedWorkers {
     var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(),
         auditReader.get(), auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get());
     try {
-      BusWorkers.deploy(this.vertx, services, new BusGuard(this.fabricToken), this.provision).toCompletableFuture()
+      BusWorkers.deploy(this.vertx, services, new BusGuard(this.fabricToken,
+          new io.artifexlabs.inventory.impl.bus.VertxStatusPublisher(this.vertx)), this.provision).toCompletableFuture()
           .get(30, TimeUnit.SECONDS);
     } catch (Exception e) {
       throw new IllegalStateException("embedded bus workers failed to deploy", e);
