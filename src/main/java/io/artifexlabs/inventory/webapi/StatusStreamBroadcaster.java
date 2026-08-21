@@ -42,7 +42,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 
 /**
  * Fans the {@code status.events} bus topic out to connected browsers and
- * apps (MORE_VERTX ask 3). The gateway subscribes to the bus ONCE and
+ * apps (PLAN.md Phase 21, ask 3). The gateway subscribes to the bus ONCE and
  * distributes per connection — the event bus itself is never exposed to a
  * client, because bus membership is access (VERTICLES.md).
  *

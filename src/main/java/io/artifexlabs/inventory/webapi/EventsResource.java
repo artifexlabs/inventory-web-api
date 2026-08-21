@@ -32,7 +32,7 @@ import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
 
 /**
- * The live status channel a frontend keeps open (MORE_VERTX ask 3): trouble
+ * The live status channel a frontend keeps open (PLAN.md Phase 21, ask 3): trouble
  * reaches the user through the UI instead of a log file nobody reads.
  *
  * <p>

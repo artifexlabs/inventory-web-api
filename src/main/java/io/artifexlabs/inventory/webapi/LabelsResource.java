@@ -60,7 +60,7 @@ public class LabelsResource {
   @Path("/feed")
   @Consumes(MediaType.WILDCARD)
   public CompletionStage<Response> feed() {
-    // 202: accepted for printing, not confirmed printed (MORE_VERTX)
+    // 202: accepted for printing, not confirmed printed (PLAN.md Phase 21)
     return BusResponses.respond(this.bus.request(BusActions.LABELS_FEED, null, null),
         v -> Response.accepted(((JsonObject) v).encode()).type(MediaType.APPLICATION_JSON).build());
   }

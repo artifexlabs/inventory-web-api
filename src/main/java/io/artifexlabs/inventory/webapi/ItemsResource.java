@@ -320,7 +320,7 @@ public class ItemsResource {
     if (format != null && !format.isBlank())
       data.put("format", format); // named label format; absent = printer default
     // 202, not 204: the printer ACCEPTS the job — TCP 9100 never told us it
-    // printed — and the outcome arrives on the status stream (MORE_VERTX)
+    // printed — and the outcome arrives on the status stream (PLAN.md Phase 21)
     return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT, id, data),
         v -> Response.accepted(((JsonObject) v).encode()).type(MediaType.APPLICATION_JSON).build());
   }

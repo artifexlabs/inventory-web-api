@@ -65,7 +65,7 @@ public class QrAndLabelTest {
   public void testPrintLabelIsAcceptedAndAudits() {
     String id = createItem("label-thing");
     // 202, not 204: the printer accepts the job and the OUTCOME arrives on
-    // the status stream — TCP 9100 never reported completion (MORE_VERTX)
+    // the status stream — TCP 9100 never reported completion (PLAN.md Phase 21)
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/" + id + "/print-label").then()
         .statusCode(202).body("accepted", org.hamcrest.Matchers.is(true));
     given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200)
