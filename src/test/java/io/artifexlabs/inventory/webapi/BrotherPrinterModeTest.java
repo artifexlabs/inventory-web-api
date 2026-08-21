@@ -54,7 +54,7 @@ public class BrotherPrinterModeTest {
         .then().statusCode(201).extract().asString()).getString("id");
 
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/" + id + "/print-label").then()
-        .statusCode(204);
+        .statusCode(202).body("accepted", org.hamcrest.Matchers.is(true));
     given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200)
         .body("action", org.hamcrest.Matchers.hasItem("label.print"));
 

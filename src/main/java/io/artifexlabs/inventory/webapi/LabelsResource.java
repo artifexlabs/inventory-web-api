@@ -53,15 +53,16 @@ public class LabelsResource {
 
   /**
    * Feed blank tape and cut — the "extend the tape" action that ends a
-   * chain-printing run. 503 when the configured printer has nothing to feed
-   * (die-cut media, no printer).
+   * chain-printing run. 202 = accepted (see print-batch); 503 when no
+   * printer is listening.
    */
   @POST
   @Path("/feed")
   @Consumes(MediaType.WILDCARD)
   public CompletionStage<Response> feed() {
+    // 202: accepted for printing, not confirmed printed (MORE_VERTX)
     return BusResponses.respond(this.bus.request(BusActions.LABELS_FEED, null, null),
-        v -> Response.noContent().build());
+        v -> Response.accepted(((JsonObject) v).encode()).type(MediaType.APPLICATION_JSON).build());
   }
 
   /**
@@ -71,7 +72,9 @@ public class LabelsResource {
    * halfCut (default true) perforates between labels so the strip tears
    * apart by hand; false takes a full cut between each. 400 on an empty list,
    * 404 when any id is unknown (the whole run is refused rather than
-   * printing a partial strip), 503 when the printer refuses.
+   * printing a partial strip), 503 when no printer is listening.
+   * Answers 202: the run was ACCEPTED; the outcome follows on the status
+   * stream, because a TCP-9100 printer never reports completion.
    */
   @POST
   @Path("/print-batch")
@@ -95,6 +98,6 @@ public class LabelsResource {
     if (in.getBoolean("halfCut") != null)
       data.put("halfCut", in.getBoolean("halfCut"));
     return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT_BATCH, null, data),
-        made -> Response.ok(((JsonObject) made).encode()).build());
+        made -> Response.accepted(((JsonObject) made).encode()).type(MediaType.APPLICATION_JSON).build());
   }
 }

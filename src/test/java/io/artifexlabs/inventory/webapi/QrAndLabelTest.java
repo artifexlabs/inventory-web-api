@@ -62,10 +62,12 @@ public class QrAndLabelTest {
   }
 
   @Test
-  public void testPrintLabelSucceedsAndAudits() {
+  public void testPrintLabelIsAcceptedAndAudits() {
     String id = createItem("label-thing");
+    // 202, not 204: the printer accepts the job and the OUTCOME arrives on
+    // the status stream — TCP 9100 never reported completion (MORE_VERTX)
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/" + id + "/print-label").then()
-        .statusCode(204);
+        .statusCode(202).body("accepted", org.hamcrest.Matchers.is(true));
     given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200)
         .body("action", org.hamcrest.Matchers.hasItem("label.print"));
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/nope/print-label").then()
@@ -76,7 +78,8 @@ public class QrAndLabelTest {
   public void testFeedExtendsTheTapeAndAudits() {
     // the log printer "feeds" (and logs); hardware printers send the real
     // blank-feed job — the "extend the tape" action ending a chain run
-    given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/labels/feed").then().statusCode(204);
+    given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/labels/feed").then().statusCode(202)
+        .body("accepted", org.hamcrest.Matchers.is(true));
     given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/printer").then().statusCode(200)
         .body("action", org.hamcrest.Matchers.hasItem("label.feed"));
     given().post("/api/v1/labels/feed").then().statusCode(401);

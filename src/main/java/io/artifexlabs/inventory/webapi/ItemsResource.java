@@ -319,7 +319,9 @@ public class ItemsResource {
     JsonObject data = new JsonObject().put("url", scanUrl(id));
     if (format != null && !format.isBlank())
       data.put("format", format); // named label format; absent = printer default
+    // 202, not 204: the printer ACCEPTS the job — TCP 9100 never told us it
+    // printed — and the outcome arrives on the status stream (MORE_VERTX)
     return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT, id, data),
-        v -> Response.noContent().build());
+        v -> Response.accepted(((JsonObject) v).encode()).type(MediaType.APPLICATION_JSON).build());
   }
 }
