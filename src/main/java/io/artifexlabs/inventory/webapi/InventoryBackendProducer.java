@@ -29,7 +29,7 @@ import io.artifexlabs.inventory.impl.InMemoryUserStore;
 import io.artifexlabs.inventory.impl.PgInventorySystem;
 import io.artifexlabs.inventory.impl.PgTokenService;
 import io.artifexlabs.inventory.impl.PgUserStore;
-import io.artifexlabs.inventory.impl.UserStore;
+import io.artifexlabs.inventory.api.UserStore;
 
 import io.vertx.mutiny.sqlclient.Pool;
 import jakarta.enterprise.context.ApplicationScoped;
