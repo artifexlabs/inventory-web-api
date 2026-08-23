@@ -24,6 +24,7 @@ import java.util.concurrent.CompletionStage;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import io.artifexlabs.inventory.api.InventoryUser;
+import io.artifexlabs.inventory.api.Ulid;
 import io.artifexlabs.inventory.api.bus.BusActions;
 import io.artifexlabs.inventory.api.bus.Roles;
 import io.artifexlabs.inventory.impl.bus.DefaultBusEnvelope;
@@ -35,17 +36,17 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 /**
- * The gateway's side of the bus fabric: builds a {@link DefaultBusEnvelope}
- * for the authenticated user of the current request — their id and principal
- * for attribution, their {@link Roles} for the worker's role check, the
- * shared fabric token — and sends it request/reply to the action's service
- * address. The reply body resolves the stage; a worker refusal or failure
- * rejects it with the worker's HTTP-aligned code
- * ({@link BusResponses#error(Throwable)} translates).
+ * The gateway's side of the bus fabric: builds a {@link DefaultBusEnvelope} for the authenticated user of the current
+ * request — their id and principal for attribution, their {@link Roles} for the worker's role check, the shared fabric
+ * token — and sends it request/reply to the action's service address. The reply body resolves the stage; a worker
+ * refusal or failure rejects it with the worker's HTTP-aligned code ({@link BusResponses#error(Throwable)} translates).
  *
- * Envelopes are built on the request thread: the request-scoped
- * {@link CurrentUser} proxy is unreachable from the event-loop threads that
- * deliver replies.
+ * Envelopes are built on the request thread: the request-scoped {@link CurrentUser} proxy is unreachable from the
+ * event-loop threads that deliver replies.
+ *
+ * This is also where a request's identity is MINTED: one fresh {@link Ulid} per outbound envelope, which every message
+ * that request causes carries onward. Asynchronous outcomes quote it back as their {@code correlationId}, which is what
+ * lets a printer failure reach the person who asked instead of only an administrator.
  */
 @ApplicationScoped
 public class BusClient {
@@ -66,8 +67,7 @@ public class BusClient {
   public CompletionStage<Object> request(String action, String targetId, JsonObject data) {
     Optional<InventoryUser> user = this.currentUser.get();
     return send(action, targetId, data, user.map(InventoryUser::getId).orElse(""),
-        user.map(InventoryUser::getEmail).orElse("anonymous"),
-        user.map(Roles::rolesFor).orElse(Set.of()));
+        user.map(InventoryUser::getEmail).orElse("anonymous"), user.map(Roles::rolesFor).orElse(Set.of()));
   }
 
   /** Send with no acting user — the pre-auth {@code auth.*} actions only. */
@@ -75,10 +75,12 @@ public class BusClient {
     return send(action, null, data, "", "anonymous", Set.of());
   }
 
-  private CompletionStage<Object> send(String action, String targetId, JsonObject data, String userId,
-      String principal, Set<String> roles) {
-    JsonObject envelope = new DefaultBusEnvelope(DefaultBusEnvelope.VERSION, this.fabricToken, userId, principal,
-        roles, action, Optional.ofNullable(targetId), data == null ? new JsonObject() : data).toJson();
+  private CompletionStage<Object> send(String action, String targetId, JsonObject data, String userId, String principal,
+      Set<String> roles) {
+    // the id every consequence of this request will carry, including outcomes
+    // that arrive after the reply (PLAN.md Phase 21's unattributed-event gap)
+    JsonObject envelope = new DefaultBusEnvelope(DefaultBusEnvelope.VERSION, this.fabricToken, Ulid.next(), userId,
+        principal, roles, action, Optional.ofNullable(targetId), data == null ? new JsonObject() : data).toJson();
     CompletableFuture<Object> reply = new CompletableFuture<>();
     this.vertx.eventBus().request(BusActions.addressOf(action), envelope,
         new DeliveryOptions().setSendTimeout(this.timeoutMs), ar -> {

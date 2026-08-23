@@ -41,16 +41,12 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 
 /**
- * Single-process mode ({@code inventory.bus.workers=embedded}, the dev/test
- * default): the gateway deploys the SAME worker set inventory-server hosts,
- * on its local bus, against its own backend beans — every request still
- * crosses the envelope contract, so embedded and remote behave identically
- * minus the network. In {@code remote} mode nothing here runs and no backend
- * bean is ever created: the domain lives in inventory-server, reached over
- * the clustered bus.
+ * Single-process mode ({@code inventory.bus.workers=embedded}, the dev/test default): the gateway deploys the SAME
+ * worker set inventory-server hosts, on its local bus, against its own backend beans — every request still crosses the
+ * envelope contract, so embedded and remote behave identically minus the network. In {@code remote} mode nothing here
+ * runs and no backend bean is ever created: the domain lives in inventory-server, reached over the clustered bus.
  *
- * Admin seeding lives here (not in the producer) so remote mode never touches
- * storage from the gateway.
+ * Admin seeding lives here (not in the producer) so remote mode never touches storage from the gateway.
  */
 @ApplicationScoped
 public class EmbeddedWorkers {
@@ -68,21 +64,21 @@ public class EmbeddedWorkers {
   @Inject
   Vertx vertx;
 
-  void onStart(@Observes StartupEvent ev, Instance<InventorySystem> inventory,
-      Instance<AssetStore> assets, Instance<RegionSystem> regions,
-      Instance<AuditReader> auditReader, Instance<AuditSink> auditSink, Instance<LabelPrinter> printer,
-      Instance<UserStore> users, Instance<TokenService> tokens,
-      Instance<io.artifexlabs.inventory.api.UpcCatalog> catalog) {
+  void onStart(@Observes StartupEvent ev, Instance<InventorySystem> inventory, Instance<AssetStore> assets,
+      Instance<RegionSystem> regions, Instance<AuditReader> auditReader, Instance<AuditSink> auditSink,
+      Instance<LabelPrinter> printer, Instance<UserStore> users, Instance<TokenService> tokens,
+      Instance<io.artifexlabs.inventory.api.UpcCatalog> catalog,
+      Instance<io.artifexlabs.inventory.api.DataSystem> data) {
     if (!"embedded".equals(this.mode)) {
       log.info("bus workers remote: the gateway sends envelopes to inventory-server");
       return;
     }
-    var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(),
-        auditReader.get(), auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get());
+    var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(), auditReader.get(),
+        auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get(), data.get());
     try {
-      BusWorkers.deploy(this.vertx, services, new BusGuard(this.fabricToken,
-          new io.artifexlabs.inventory.impl.bus.VertxStatusPublisher(this.vertx)), this.provision).toCompletableFuture()
-          .get(30, TimeUnit.SECONDS);
+      BusWorkers.deploy(this.vertx, services,
+          new BusGuard(this.fabricToken, new io.artifexlabs.inventory.impl.bus.VertxStatusPublisher(this.vertx)),
+          this.provision).toCompletableFuture().get(30, TimeUnit.SECONDS);
     } catch (Exception e) {
       throw new IllegalStateException("embedded bus workers failed to deploy", e);
     }
@@ -91,16 +87,14 @@ public class EmbeddedWorkers {
   }
 
   private static String config(String name, String defaultValue) {
-    return org.eclipse.microprofile.config.ConfigProvider.getConfig()
-        .getOptionalValue(name, String.class).orElse(defaultValue);
+    return org.eclipse.microprofile.config.ConfigProvider.getConfig().getOptionalValue(name, String.class)
+        .orElse(defaultValue);
   }
 
   /** Ensure the configured admin exists; seed the static dev token in memory mode. */
   private static void seedAdmin(BusWorkers.BackendServices services) {
-    InventoryUser admin = services.users()
-        .ensureUser(config("inventory.admin.email", "admin@example.com"), "Administrator",
-            config("inventory.admin.password", "change-me"), true)
-        .toCompletableFuture().join();
+    InventoryUser admin = services.users().ensureUser(config("inventory.admin.email", "admin@example.com"),
+        "Administrator", config("inventory.admin.password", "change-me"), true).toCompletableFuture().join();
     if (services.tokens() instanceof InMemoryTokenService memoryTokens)
       memoryTokens.seed(config("inventory.api.token", "dev-token"), admin);
   }

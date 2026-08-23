@@ -41,10 +41,8 @@ import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
 
 /**
- * Stage 3 gate (VERTICLES.md): with {@code inventory.events.bus=local}, a
- * mutation publishes its fact on the in-process bus — the same event (same
- * id) its audit row records, and only after that row is queryable
- * (publish-after-commit).
+ * Stage 3 gate (VERTICLES.md): with {@code inventory.events.bus=local}, a mutation publishes its fact on the in-process
+ * bus — the same event (same id) its audit row records, and only after that row is queryable (publish-after-commit).
  */
 @QuarkusTest
 @TestProfile(LocalBusPublishTest.Profile.class)
@@ -66,14 +64,14 @@ class LocalBusPublishTest {
   void mutationPublishesCommittedFactOnBothAddresses() throws Exception {
     BlockingQueue<JsonObject> firehose = new LinkedBlockingQueue<>();
     BlockingQueue<JsonObject> itemsOnly = new LinkedBlockingQueue<>();
-    MessageConsumer<JsonObject> all = this.vertx.eventBus()
-        .consumer(InventoryEvents.ADDRESS, m -> firehose.add(m.body()));
-    MessageConsumer<JsonObject> items = this.vertx.eventBus()
-        .consumer(InventoryEvents.categoryAddress("item.create"), m -> itemsOnly.add(m.body()));
+    MessageConsumer<JsonObject> all = this.vertx.eventBus().consumer(InventoryEvents.ADDRESS,
+        m -> firehose.add(m.body()));
+    MessageConsumer<JsonObject> items = this.vertx.eventBus().consumer(InventoryEvents.categoryAddress("item.create"),
+        m -> itemsOnly.add(m.body()));
     try {
       String created = given().header("Authorization", "Bearer dev-token").contentType(ContentType.JSON)
-          .body(new JsonObject().put("name", "bus-item").put("type", "tool").encode())
-          .post("/api/v1/items").then().statusCode(201).extract().asString();
+          .body(new JsonObject().put("name", "bus-item").put("type", "tool").encode()).post("/api/v1/items").then()
+          .statusCode(201).extract().asString();
       String itemId = new JsonObject(created).getString("id");
 
       JsonObject wire = poll(firehose, itemId);

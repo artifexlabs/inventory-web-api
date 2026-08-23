@@ -28,16 +28,16 @@ import com.sun.net.httpserver.HttpServer;
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 
 /**
- * A local Open-Facts-shaped catalog for the e2e tests: knows exactly one
- * GTIN (with a product image), answers the OFF "status 0" shape for
- * everything else. Points {@code inventory.catalog} at itself so no test
- * ever touches the network.
+ * A local Open-Facts-shaped catalog for the e2e tests: knows exactly one GTIN (with a product image), answers the OFF
+ * "status 0" shape for everything else. Points {@code inventory.catalog} at itself so no test ever touches the network.
  */
 public class CatalogStubResource implements QuarkusTestResourceLifecycleManager {
 
   /** The one GTIN the stub catalog knows. */
   public final static String KNOWN_GTIN = "0049000006346";
-  public final static byte[] IMAGE = new byte[] { (byte) 0x89, 'P', 'N', 'G', 9, 9 };
+  public final static byte[] IMAGE = new byte[] {
+      (byte) 0x89, 'P', 'N', 'G', 9, 9
+  };
 
   private HttpServer server;
 
@@ -54,8 +54,8 @@ public class CatalogStubResource implements QuarkusTestResourceLifecycleManager 
       String body = path.contains(KNOWN_GTIN) ? """
           {"status":1,"product":{"product_name":"Stub Cola","brands":"StubCo",
            "generic_name":"A canned test beverage","categories":"en:beverages, en:test-drinks",
-           "product_quantity":355,"product_quantity_unit":"g","image_url":"%s/image.png"}}"""
-          .formatted(base) : "{\"status\":0}";
+           "product_quantity":355,"product_quantity_unit":"g","image_url":"%s/image.png"}}""".formatted(base)
+          : "{\"status\":0}";
       byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
       ex.getResponseHeaders().add("Content-Type", "application/json");
       ex.sendResponseHeaders(200, bytes.length);

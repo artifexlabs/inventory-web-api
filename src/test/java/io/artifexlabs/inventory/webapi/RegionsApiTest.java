@@ -32,9 +32,8 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
 /**
- * Phase 8 spatial annotation over the REST surface (memory backend): photo →
- * bare boxes (draw-then-describe) → items, with containment, region links,
- * audit rows, and capture-coordinate extraction (EXIF vs explicit).
+ * Phase 8 spatial annotation over the REST surface (memory backend): photo → bare boxes (draw-then-describe) → items,
+ * with containment, region links, audit rows, and capture-coordinate extraction (EXIF vs explicit).
  */
 @QuarkusTest
 public class RegionsApiTest {
@@ -45,9 +44,10 @@ public class RegionsApiTest {
   }
 
   private static String createItem(String name, String type) {
-    return new JsonObject(authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("name", name).put("type", type).encode()).post("/api/v1/items").then()
-        .statusCode(201).extract().asString()).getString("id");
+    return new JsonObject(
+        authed().contentType(ContentType.JSON).body(new JsonObject().put("name", name).put("type", type).encode())
+            .post("/api/v1/items").then().statusCode(201).extract().asString())
+        .getString("id");
   }
 
   private static String uploadImage(String itemId, byte[] bytes, String query) {
@@ -64,22 +64,20 @@ public class RegionsApiTest {
     // draw two bare boxes, no data yet
     String box1 = new JsonObject(authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("x", 0.1).put("y", 0.2).put("w", 0.3).put("h", 0.4).encode())
-        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201)
-        .body("itemId", nullValue()).extract().asString()).getString("id");
+        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201).body("itemId", nullValue()).extract()
+        .asString()).getString("id");
     authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("x", 0.6).put("y", 0.1).put("w", 0.2).put("h", 0.2).put("label", "later")
-            .encode())
+        .body(new JsonObject().put("x", 0.6).put("y", 0.1).put("w", 0.2).put("h", 0.2).put("label", "later").encode())
         .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201);
     authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).body("size()", equalTo(2));
 
     // describe box1: becomes an item contained in the space
     String hammerId = new JsonObject(authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("name", "hammer").put("type", "tool").put("containerId", spaceId).encode())
-        .post("/api/v1/regions/" + box1 + "/make-item").then().statusCode(201)
-        .body("name", equalTo("hammer")).extract().asString()).getString("id");
+        .post("/api/v1/regions/" + box1 + "/make-item").then().statusCode(201).body("name", equalTo("hammer")).extract()
+        .asString()).getString("id");
 
-    authed().get("/api/v1/items/" + hammerId + "/container").then().statusCode(200)
-        .body("id", equalTo(spaceId));
+    authed().get("/api/v1/items/" + hammerId + "/container").then().statusCode(200).body("id", equalTo(spaceId));
     JsonArray regions = new JsonArray(
         authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).extract().asString());
     Assertions.assertEquals(hammerId, regions.stream().map(o -> (JsonObject) o)
@@ -101,61 +99,59 @@ public class RegionsApiTest {
 
     String dot = new JsonObject(authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("x", 0.5).put("y", 0.25).put("w", 0).put("h", 0).encode())
-        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201)
-        .body("itemId", nullValue()).extract().asString()).getString("id");
-    authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200)
-        .body("size()", equalTo(1)).body("[0].w", equalTo(0.0f)).body("[0].h", equalTo(0.0f));
+        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201).body("itemId", nullValue()).extract()
+        .asString()).getString("id");
+    authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).body("size()", equalTo(1))
+        .body("[0].w", equalTo(0.0f)).body("[0].h", equalTo(0.0f));
 
     String plierId = new JsonObject(authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("name", "pliers").put("type", "tool").put("containerId", spaceId).encode())
-        .post("/api/v1/regions/" + dot + "/make-item").then().statusCode(201)
-        .body("name", equalTo("pliers")).extract().asString()).getString("id");
-    authed().get("/api/v1/items/" + plierId + "/container").then().statusCode(200)
-        .body("id", equalTo(spaceId));
+        .post("/api/v1/regions/" + dot + "/make-item").then().statusCode(201).body("name", equalTo("pliers")).extract()
+        .asString()).getString("id");
+    authed().get("/api/v1/items/" + plierId + "/container").then().statusCode(200).body("id", equalTo(spaceId));
   }
 
   @Test
   public void testCreateItemFromPhoto() {
     // ongoing item 2: one call — item created, photo attached, EXIF pins it
     JsonObject made = new JsonObject(authed().header("X-Filename", "garage.jpg").contentType("image/jpeg")
-        .body(jpegWithGps()).post("/api/v1/items/from-photo?name=photo-garage&type=location").then()
-        .statusCode(201).extract().asString());
+        .body(jpegWithGps()).post("/api/v1/items/from-photo?name=photo-garage&type=location").then().statusCode(201)
+        .extract().asString());
     JsonObject item = made.getJsonObject("item");
     JsonObject asset = made.getJsonObject("asset");
     Assertions.assertEquals("location", item.getString("type"));
     Assertions.assertNotNull(item.getDouble("latitude"), "EXIF pinned the created place itself");
     Assertions.assertEquals(item.getString("id"), asset.getString("itemId"));
     Assertions.assertEquals("photo", asset.getString("kind"));
-    authed().get("/api/v1/items/" + item.getString("id") + "/assets").then().statusCode(200)
-        .body("size()", equalTo(1));
+    authed().get("/api/v1/items/" + item.getString("id") + "/assets").then().statusCode(200).body("size()", equalTo(1));
     authed().get("/api/v1/audit/target/" + item.getString("id")).then().statusCode(200)
         .body("action", hasItem("item.create")).body("action", hasItem("asset.attach"));
 
     // contained + map-kind variant (ongoing item 3 rides the same call)
-    JsonObject wall = new JsonObject(authed().header("X-Filename", "plan.png").contentType("image/png")
-        .body(jpegNoGps())
-        .post("/api/v1/items/from-photo?name=wall-map&type=location&kind=map&container=" + item.getString("id"))
-        .then().statusCode(201).extract().asString());
+    JsonObject wall = new JsonObject(
+        authed().header("X-Filename", "plan.png").contentType("image/png").body(jpegNoGps())
+            .post("/api/v1/items/from-photo?name=wall-map&type=location&kind=map&container=" + item.getString("id"))
+            .then().statusCode(201).extract().asString());
     Assertions.assertEquals("map", wall.getJsonObject("asset").getString("kind"));
-    authed().get("/api/v1/items/" + wall.getJsonObject("item").getString("id") + "/container").then()
-        .statusCode(200).body("id", equalTo(item.getString("id")));
+    authed().get("/api/v1/items/" + wall.getJsonObject("item").getString("id") + "/container").then().statusCode(200)
+        .body("id", equalTo(item.getString("id")));
 
     // refusals: missing name, unknown container
     authed().contentType("image/png").body(jpegNoGps()).post("/api/v1/items/from-photo").then().statusCode(400);
-    authed().contentType("image/png").body(jpegNoGps())
-        .post("/api/v1/items/from-photo?name=x&container=missing").then().statusCode(404);
+    authed().contentType("image/png").body(jpegNoGps()).post("/api/v1/items/from-photo?name=x&container=missing").then()
+        .statusCode(404);
   }
 
   @Test
   public void testMapKindRoundTripsOnPlainUpload() {
     String wallId = createItem("wall", "location");
     String assetId = uploadImage(wallId, jpegNoGps(), "?kind=map");
-    authed().get("/api/v1/items/" + wallId + "/assets").then().statusCode(200)
-        .body("[0].kind", equalTo("map")).body("[0].id", equalTo(assetId));
+    authed().get("/api/v1/items/" + wallId + "/assets").then().statusCode(200).body("[0].kind", equalTo("map"))
+        .body("[0].id", equalTo(assetId));
     // boxes on a map become places through the SAME make-item call
     String placeId = new JsonObject(authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("x", 0.1).put("y", 0.1).put("w", 0.3).put("h", 0.3)
-            .put("name", "corner-shelf").put("type", "location").put("containerId", wallId).encode())
+        .body(new JsonObject().put("x", 0.1).put("y", 0.1).put("w", 0.3).put("h", 0.3).put("name", "corner-shelf")
+            .put("type", "location").put("containerId", wallId).encode())
         .post("/api/v1/assets/" + assetId + "/regions/make-item").then().statusCode(201)
         .body("type", equalTo("location")).extract().asString()).getString("id");
     authed().get("/api/v1/items/" + placeId + "/container").then().statusCode(200).body("id", equalTo(wallId));
@@ -181,13 +177,12 @@ public class RegionsApiTest {
     String assetId = uploadImage(spaceId, jpegNoGps(), "");
     String boxId = new JsonObject(authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("x", 0.1).put("y", 0.1).put("w", 0.1).put("h", 0.1).encode())
-        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201).extract().asString())
-        .getString("id");
+        .post("/api/v1/assets/" + assetId + "/regions").then().statusCode(201).extract().asString()).getString("id");
     authed().delete("/api/v1/regions/" + boxId).then().statusCode(204);
     authed().delete("/api/v1/regions/" + boxId).then().statusCode(404);
     authed().get("/api/v1/assets/" + assetId + "/regions").then().statusCode(200).body("size()", equalTo(0));
-    authed().get("/api/v1/audit/target/" + spaceId).then().statusCode(200)
-        .body("action", hasItem("region.create")).body("action", hasItem("region.delete"));
+    authed().get("/api/v1/audit/target/" + spaceId).then().statusCode(200).body("action", hasItem("region.create"))
+        .body("action", hasItem("region.delete"));
     authed().contentType(ContentType.JSON)
         .body(new JsonObject().put("x", 0.1).put("y", 0.1).put("w", 0.1).put("h", 0.1).encode())
         .post("/api/v1/assets/nope/regions").then().statusCode(404);
@@ -198,23 +193,25 @@ public class RegionsApiTest {
     String itemId = createItem("photo-holder", "thing");
     // EXIF only: extracted server-side
     authed().header("X-Filename", "exif.jpg").contentType("image/jpeg").body(jpegWithGps())
-        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201)
-        .body("latitude", equalTo(35.5f)).body("longitude", equalTo(-97.25f));
+        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).body("latitude", equalTo(35.5f))
+        .body("longitude", equalTo(-97.25f));
     // explicit beats EXIF (the mobile path: phone GPS at capture)
     authed().header("X-Filename", "explicit.jpg").contentType("image/jpeg").body(jpegWithGps())
         .post("/api/v1/items/" + itemId + "/assets?lat=1.5&long=2.5").then().statusCode(201)
         .body("latitude", equalTo(1.5f)).body("longitude", equalTo(2.5f));
     // no data at all: fields absent
     authed().header("X-Filename", "plain.jpg").contentType("image/jpeg").body(jpegNoGps())
-        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201)
-        .body("latitude", nullValue()).body("id", notNullValue());
+        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).body("latitude", nullValue())
+        .body("id", notNullValue());
     // and the list view carries them
-    authed().get("/api/v1/items/" + itemId + "/assets").then().statusCode(200)
-        .body("[0].latitude", equalTo(35.5f)).body("[1].latitude", equalTo(1.5f));
+    authed().get("/api/v1/items/" + itemId + "/assets").then().statusCode(200).body("[0].latitude", equalTo(35.5f))
+        .body("[1].latitude", equalTo(1.5f));
   }
 
   private static byte[] jpegNoGps() {
-    return new byte[] { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9 };
+    return new byte[] {
+        (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9
+    };
   }
 
   /** 35°30'N, 97°15'W — mirrors inventory-impl's GpsJpeg test builder. */

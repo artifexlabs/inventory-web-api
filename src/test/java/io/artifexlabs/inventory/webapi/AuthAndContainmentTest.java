@@ -63,8 +63,8 @@ public class AuthAndContainmentTest {
 
   @Test
   public void testMeReflectsCurrentUser() {
-    withToken("dev-token").get("/api/v1/auth/me").then().statusCode(200)
-        .body("email", equalTo("admin@example.com")).body("admin", is(true));
+    withToken("dev-token").get("/api/v1/auth/me").then().statusCode(200).body("email", equalTo("admin@example.com"))
+        .body("admin", is(true));
     given().get("/api/v1/auth/me").then().statusCode(401);
   }
 
@@ -87,17 +87,14 @@ public class AuthAndContainmentTest {
     String bolt = create(token, "bolt", "cont-part");
 
     withToken(token).put("/api/v1/items/" + box + "/contained/" + bolt).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
-        .body("id", equalTo(box));
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200).body("id", equalTo(box));
 
     // single-parent tree: contain into a second container RE-PARENTS
     withToken(token).put("/api/v1/items/" + bin + "/contained/" + bolt).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
-        .body("id", equalTo(bin));
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200).body("id", equalTo(bin));
 
     withToken(token).post("/api/v1/items/" + bolt + "/move-to/" + box).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200)
-        .body("id", equalTo(box));
+    withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(200).body("id", equalTo(box));
 
     withToken(token).delete("/api/v1/items/" + box + "/contained/" + bolt).then().statusCode(204);
     withToken(token).get("/api/v1/items/" + bolt + "/container").then().statusCode(404); // a root
@@ -116,13 +113,13 @@ public class AuthAndContainmentTest {
     String crate = create(token, "tag-crate", "cont-box");
 
     // pin the garage, contain the crate, and the crate inherits
-    JsonObject full = new JsonObject(withToken(token).get("/api/v1/items/" + garage)
-        .then().statusCode(200).extract().asString()).put("latitude", 33.7).put("longitude", -84.4);
-    withToken(token).contentType(ContentType.JSON).body(full.encode())
-        .put("/api/v1/items/" + garage).then().statusCode(200);
+    JsonObject full = new JsonObject(
+        withToken(token).get("/api/v1/items/" + garage).then().statusCode(200).extract().asString())
+        .put("latitude", 33.7).put("longitude", -84.4);
+    withToken(token).contentType(ContentType.JSON).body(full.encode()).put("/api/v1/items/" + garage).then()
+        .statusCode(200);
     withToken(token).put("/api/v1/items/" + garage + "/contained/" + crate).then().statusCode(204);
-    withToken(token).get("/api/v1/items/" + crate + "/coordinates").then().statusCode(200)
-        .body("latitude", is(33.7f));
+    withToken(token).get("/api/v1/items/" + crate + "/coordinates").then().statusCode(200).body("latitude", is(33.7f));
 
     // tags: attach, search, remove
     withToken(token).contentType(ContentType.JSON)
@@ -149,19 +146,19 @@ public class AuthAndContainmentTest {
         .put("/api/v1/items/" + scanner + "/identities").then().statusCode(204);
 
     // a scanned marker resolves to the item (kind normalized to lowercase)
-    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200)
-        .body("id", equalTo(scanner));
-    withToken(token).get("/api/v1/items/by-identity?kind=nfc-uid&value=04:A2:B3").then().statusCode(200)
-        .body("id", equalTo(scanner));
-    withToken(token).get("/api/v1/items/" + scanner + "/identities").then().statusCode(200)
-        .body("size()", is(2)).body("[1].kind", equalTo("upc"));
+    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200).body("id",
+        equalTo(scanner));
+    withToken(token).get("/api/v1/items/by-identity?kind=nfc-uid&value=04:A2:B3").then().statusCode(200).body("id",
+        equalTo(scanner));
+    withToken(token).get("/api/v1/items/" + scanner + "/identities").then().statusCode(200).body("size()", is(2))
+        .body("[1].kind", equalTo("upc"));
 
     // reusing a claimed marker on another item is a 409, and nothing moves
     withToken(token).contentType(ContentType.JSON)
         .body(new JsonObject().put("kind", "upc").put("value", "012345678905").encode())
         .put("/api/v1/items/" + rival + "/identities").then().statusCode(409);
-    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200)
-        .body("id", equalTo(scanner));
+    withToken(token).get("/api/v1/items/by-identity?kind=upc&value=012345678905").then().statusCode(200).body("id",
+        equalTo(scanner));
 
     // release frees the marker; unknown markers and blank claims are refused
     withToken(token).delete("/api/v1/items/" + scanner + "/identities/upc/012345678905").then().statusCode(204);
@@ -169,8 +166,7 @@ public class AuthAndContainmentTest {
     withToken(token).delete("/api/v1/items/" + scanner + "/identities/upc/012345678905").then().statusCode(404);
     withToken(token).contentType(ContentType.JSON).body(new JsonObject().put("kind", "upc").encode())
         .put("/api/v1/items/" + scanner + "/identities").then().statusCode(400);
-    withToken(token).contentType(ContentType.JSON)
-        .body(new JsonObject().put("kind", "upc").put("value", "1").encode())
+    withToken(token).contentType(ContentType.JSON).body(new JsonObject().put("kind", "upc").put("value", "1").encode())
         .put("/api/v1/items/missing-item/identities").then().statusCode(404);
   }
 }

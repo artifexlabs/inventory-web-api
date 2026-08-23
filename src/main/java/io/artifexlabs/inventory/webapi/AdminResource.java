@@ -37,11 +37,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Admin-only management over the bus fabric: users, their admin flag, and
- * issued tokens. The admin requirement is the worker guard's role check
- * (403); every mutation's audit entry is written by the worker with the
- * envelope's principal — the acting admin — as the actor. The self-delete
- * refusal (409) keys on the envelope's acting userId.
+ * Admin-only management over the bus fabric: users, their admin flag, and issued tokens. The admin requirement is the
+ * worker guard's role check (403); every mutation's audit entry is written by the worker with the envelope's principal
+ * — the acting admin — as the actor. The self-delete refusal (409) keys on the envelope's acting userId.
  */
 @Path("/api/v1/admin")
 @Produces(MediaType.APPLICATION_JSON)
@@ -79,8 +77,7 @@ public class AdminResource {
   @DELETE
   @Path("/users/{id}")
   public CompletionStage<Response> deleteUser(@PathParam("id") String id) {
-    return BusResponses.respond(this.bus.request(BusActions.USERS_DELETE, id, null),
-        v -> Response.noContent().build());
+    return BusResponses.respond(this.bus.request(BusActions.USERS_DELETE, id, null), v -> Response.noContent().build());
   }
 
   @POST

@@ -33,9 +33,8 @@ import io.restassured.http.ContentType;
 import io.vertx.core.json.JsonObject;
 
 /**
- * Federated-identity resolution at the exchange: subject match wins over
- * email, an email match links the new identity, and a relay-style email that
- * matches nothing follows the provisioning policy.
+ * Federated-identity resolution at the exchange: subject match wins over email, an email match links the new identity,
+ * and a relay-style email that matches nothing follows the provisioning policy.
  */
 @QuarkusTest
 @TestProfile(OidcExchangeIdentityTest.Profile.class)
@@ -75,17 +74,17 @@ public class OidcExchangeIdentityTest {
         new JsonObject().put("email", "LINKED@example.com").put("provider", "apple").put("subject", "a-sub-9"));
     assertEquals(userId(google), userId(apple));
     // and the apple identity now resolves even if the email later differs
-    String relay = exchange(new JsonObject().put("email", "relay@privaterelay.appleid.com")
-        .put("provider", "apple").put("subject", "a-sub-9"));
+    String relay = exchange(new JsonObject().put("email", "relay@privaterelay.appleid.com").put("provider", "apple")
+        .put("subject", "a-sub-9"));
     assertEquals(userId(google), userId(relay));
   }
 
   @Test
   public void testDistinctSubjectsAreDistinctUsers() {
-    String a = exchange(new JsonObject().put("email", "a@privaterelay.appleid.com").put("provider", "apple")
-        .put("subject", "sub-a"));
-    String b = exchange(new JsonObject().put("email", "b@privaterelay.appleid.com").put("provider", "apple")
-        .put("subject", "sub-b"));
+    String a = exchange(
+        new JsonObject().put("email", "a@privaterelay.appleid.com").put("provider", "apple").put("subject", "sub-a"));
+    String b = exchange(
+        new JsonObject().put("email", "b@privaterelay.appleid.com").put("provider", "apple").put("subject", "sub-b"));
     assertNotEquals(userId(a), userId(b));
   }
 
@@ -96,7 +95,6 @@ public class OidcExchangeIdentityTest {
     assertEquals(userId(first), userId(again));
     given().contentType(ContentType.JSON).header(OidcExchangeResource.SECRET_HEADER, "test-secret")
         .body(new JsonObject().put("provider", "apple").put("subject", "no-email").encode())
-        .post("/api/v1/auth/exchange").then().statusCode(400)
-        .body("error", equalTo("email is required"));
+        .post("/api/v1/auth/exchange").then().statusCode(400).body("error", equalTo("email is required"));
   }
 }

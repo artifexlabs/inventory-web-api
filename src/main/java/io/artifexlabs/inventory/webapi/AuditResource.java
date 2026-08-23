@@ -34,10 +34,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Read the audit trail over the bus fabric. The global feed demands the
- * admin role — enforced by the worker's guard, translated here to 403; the
- * per-target history is available to any authenticated user (it backs the
- * item history view).
+ * Read the audit trail over the bus fabric. The global feed demands the admin role — enforced by the worker's guard,
+ * translated here to 403; the per-target history is available to any authenticated user (it backs the item history
+ * view).
  */
 @Path("/api/v1/audit")
 @Produces(MediaType.APPLICATION_JSON)
@@ -58,8 +57,7 @@ public class AuditResource {
   @Path("/target/{id}")
   public CompletionStage<Response> byTarget(@PathParam("id") String id,
       @QueryParam("limit") @DefaultValue("50") int limit) {
-    return BusResponses.respond(
-        this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", limit)),
+    return BusResponses.respond(this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", limit)),
         body -> Response.ok(((JsonArray) body).encode()).build());
   }
 }

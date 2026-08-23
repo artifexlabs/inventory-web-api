@@ -30,11 +30,9 @@ import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
 
 /**
- * Boots a real Postgres and applies the Liquibase schema BEFORE the Quarkus
- * app starts (the startup admin-ensure needs the tables), then points the
- * reactive datasource at it and flips {@code inventory.storage=pg}. Use with
- * {@code restrictToAnnotatedClass = true} — every other server test stays in
- * memory mode.
+ * Boots a real Postgres and applies the Liquibase schema BEFORE the Quarkus app starts (the startup admin-ensure needs
+ * the tables), then points the reactive datasource at it and flips {@code inventory.storage=pg}. Use with
+ * {@code restrictToAnnotatedClass = true} — every other server test stays in memory mode.
  */
 public class PgServerTestResource implements QuarkusTestResourceLifecycleManager {
 
@@ -51,12 +49,9 @@ public class PgServerTestResource implements QuarkusTestResourceLifecycleManager
     } catch (Exception e) {
       throw new RuntimeException("could not prepare Postgres schema", e);
     }
-    return Map.of(
-        "inventory.storage", "pg",
-        "quarkus.datasource.reactive.url",
+    return Map.of("inventory.storage", "pg", "quarkus.datasource.reactive.url",
         "postgresql://" + this.pg.getHost() + ":" + this.pg.getMappedPort(5432) + "/" + this.pg.getDatabaseName(),
-        "quarkus.datasource.username", this.pg.getUsername(),
-        "quarkus.datasource.password", this.pg.getPassword(),
+        "quarkus.datasource.username", this.pg.getUsername(), "quarkus.datasource.password", this.pg.getPassword(),
         "quarkus.devservices.enabled", "false");
   }
 

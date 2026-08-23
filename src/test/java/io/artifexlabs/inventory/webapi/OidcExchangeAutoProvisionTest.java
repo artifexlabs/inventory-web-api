@@ -43,8 +43,7 @@ public class OidcExchangeAutoProvisionTest {
 
   @Test
   public void testUnknownEmailIsProvisionedNonAdminAndAudited() {
-    String body = given().contentType(ContentType.JSON)
-        .header(OidcExchangeResource.SECRET_HEADER, "test-secret")
+    String body = given().contentType(ContentType.JSON).header(OidcExchangeResource.SECRET_HEADER, "test-secret")
         .body(new JsonObject().put("email", "newcomer@example.com").put("displayName", "New Comer").encode())
         .post("/api/v1/auth/exchange").then().statusCode(200).body("user.admin", is(false))
         .body("user.email", equalTo("newcomer@example.com")).extract().asString();
@@ -54,15 +53,13 @@ public class OidcExchangeAutoProvisionTest {
 
     // the issued token works, and the provisioning was audited
     given().header("Authorization", "Bearer " + token).get("/api/v1/items").then().statusCode(200);
-    given().header("Authorization", "Bearer dev-token").get("/api/v1/audit/target/" + userId).then()
-        .statusCode(200).body("action", org.hamcrest.Matchers.hasItem("user.create"));
+    given().header("Authorization", "Bearer dev-token").get("/api/v1/audit/target/" + userId).then().statusCode(200)
+        .body("action", org.hamcrest.Matchers.hasItem("user.create"));
 
     // second exchange reuses the same user rather than creating another
-    String again = given().contentType(ContentType.JSON)
-        .header(OidcExchangeResource.SECRET_HEADER, "test-secret")
-        .body(new JsonObject().put("email", "newcomer@example.com").encode()).post("/api/v1/auth/exchange")
-        .then().statusCode(200).extract().asString();
-    org.junit.jupiter.api.Assertions.assertEquals(userId,
-        new JsonObject(again).getJsonObject("user").getString("id"));
+    String again = given().contentType(ContentType.JSON).header(OidcExchangeResource.SECRET_HEADER, "test-secret")
+        .body(new JsonObject().put("email", "newcomer@example.com").encode()).post("/api/v1/auth/exchange").then()
+        .statusCode(200).extract().asString();
+    org.junit.jupiter.api.Assertions.assertEquals(userId, new JsonObject(again).getJsonObject("user").getString("id"));
   }
 }

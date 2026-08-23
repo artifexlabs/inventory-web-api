@@ -24,8 +24,7 @@ import io.artifexlabs.inventory.api.InventoryUser;
 import jakarta.enterprise.context.RequestScoped;
 
 /**
- * The authenticated user for the current request, set by
- * {@link BearerTokenFilter} once the token resolves.
+ * The authenticated user for the current request, set by {@link BearerTokenFilter} once the token resolves.
  */
 @RequestScoped
 public class CurrentUser {

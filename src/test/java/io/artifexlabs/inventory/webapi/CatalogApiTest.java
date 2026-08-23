@@ -32,9 +32,8 @@ import io.restassured.http.ContentType;
 import io.vertx.core.json.JsonObject;
 
 /**
- * The whole scanned-barcode flow against the stub catalog: prefill lookup,
- * one-shot creation with identity + tags + downloaded image, conflict on a
- * reused code, and creation surviving a catalog miss.
+ * The whole scanned-barcode flow against the stub catalog: prefill lookup, one-shot creation with identity + tags +
+ * downloaded image, conflict on a reused code, and creation surviving a catalog miss.
  */
 @QuarkusTest
 @TestProfile(CatalogApiTest.CatalogProfile.class)
@@ -56,9 +55,8 @@ public class CatalogApiTest {
   @Test
   public void testLookupPrefillsFromTheCatalog() {
     authed().get("/api/v1/catalog/upc/" + CatalogStubResource.KNOWN_GTIN).then().statusCode(200)
-        .body("name", equalTo("Stub Cola")).body("brand", equalTo("StubCo"))
-        .body("category", equalTo("test-drinks")).body("weightGrams", equalTo(355.0f))
-        .body("sourceUrl", notNullValue());
+        .body("name", equalTo("Stub Cola")).body("brand", equalTo("StubCo")).body("category", equalTo("test-drinks"))
+        .body("weightGrams", equalTo(355.0f)).body("sourceUrl", notNullValue());
     // UPC-A form of the same code canonicalizes and still hits
     authed().get("/api/v1/catalog/upc/049000006346").then().statusCode(200).body("name", equalTo("Stub Cola"));
   }
@@ -73,48 +71,45 @@ public class CatalogApiTest {
 
   @Test
   public void testFromUpcCreatesTheFullItem() {
-    String body = authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("type", "drink").encode())
+    String body = authed().contentType(ContentType.JSON).body(new JsonObject().put("type", "drink").encode())
         .post("/api/v1/items/from-upc?gtin=" + CatalogStubResource.KNOWN_GTIN).then().statusCode(201)
-        .body("item.name", equalTo("Stub Cola")).body("item.type", equalTo("drink"))
-        .body("asset.id", notNullValue()).extract().asString();
+        .body("item.name", equalTo("Stub Cola")).body("item.type", equalTo("drink")).body("asset.id", notNullValue())
+        .extract().asString();
     JsonObject made = new JsonObject(body);
     String itemId = made.getJsonObject("item").getString("id");
 
     // the scanned code resolves back; tags carry brand/category/source
-    authed().get("/api/v1/items/by-identity?kind=upc&value=" + CatalogStubResource.KNOWN_GTIN).then()
-        .statusCode(200).body("id", equalTo(itemId));
-    authed().get("/api/v1/items/" + itemId).then().statusCode(200)
-        .body("tags.key", hasItem("brand")).body("tags.key", hasItem("category"))
-        .body("tags.key", hasItem("source"))
+    authed().get("/api/v1/items/by-identity?kind=upc&value=" + CatalogStubResource.KNOWN_GTIN).then().statusCode(200)
+        .body("id", equalTo(itemId));
+    authed().get("/api/v1/items/" + itemId).then().statusCode(200).body("tags.key", hasItem("brand"))
+        .body("tags.key", hasItem("category")).body("tags.key", hasItem("source"))
         .body("description", equalTo("A canned test beverage"));
     // the downloaded catalog image is a real asset
-    byte[] image = authed().get("/api/v1/assets/" + made.getJsonObject("asset").getString("id"))
-        .then().statusCode(200).extract().asByteArray();
+    byte[] image = authed().get("/api/v1/assets/" + made.getJsonObject("asset").getString("id")).then().statusCode(200)
+        .extract().asByteArray();
     org.junit.jupiter.api.Assertions.assertArrayEquals(CatalogStubResource.IMAGE, image);
 
     // a reused code is a conflict, and the item did not move
     authed().contentType(ContentType.JSON).body("{}")
         .post("/api/v1/items/from-upc?gtin=" + CatalogStubResource.KNOWN_GTIN).then().statusCode(409);
-    authed().get("/api/v1/items/by-identity?kind=upc&value=" + CatalogStubResource.KNOWN_GTIN).then()
-        .statusCode(200).body("id", equalTo(itemId));
+    authed().get("/api/v1/items/by-identity?kind=upc&value=" + CatalogStubResource.KNOWN_GTIN).then().statusCode(200)
+        .body("id", equalTo(itemId));
   }
 
   @Test
   public void testCatalogMissStillCreatesFromTheBody() {
     String container = new JsonObject(authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("name", "upc-shelf").put("type", "container").encode())
-        .post("/api/v1/items").then().statusCode(201).extract().asString()).getString("id");
+        .body(new JsonObject().put("name", "upc-shelf").put("type", "container").encode()).post("/api/v1/items").then()
+        .statusCode(201).extract().asString()).getString("id");
 
-    authed().contentType(ContentType.JSON)
-        .body(new JsonObject().put("name", "mystery-widget").encode())
+    authed().contentType(ContentType.JSON).body(new JsonObject().put("name", "mystery-widget").encode())
         .post("/api/v1/items/from-upc?gtin=" + UNKNOWN_GTIN + "&container=" + container).then().statusCode(201)
         .body("item.name", equalTo("mystery-widget")).body("item.type", equalTo("thing"))
         .body("item.containerId", equalTo(container)).body("asset", org.hamcrest.Matchers.nullValue());
 
     // no name from either side: nothing to create
-    authed().contentType(ContentType.JSON).body("{}")
-        .post("/api/v1/items/from-upc?gtin=0000096385074").then().statusCode(400);
+    authed().contentType(ContentType.JSON).body("{}").post("/api/v1/items/from-upc?gtin=0000096385074").then()
+        .statusCode(400);
     // unknown container refuses the whole creation
     authed().contentType(ContentType.JSON).body(new JsonObject().put("name", "x").encode())
         .post("/api/v1/items/from-upc?gtin=0000096385074&container=missing").then().statusCode(404);

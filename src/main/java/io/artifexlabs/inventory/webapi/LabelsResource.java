@@ -32,8 +32,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Printer-level label operations — actions on the printer itself rather than
- * on an item (those live beside the item: {@code /items/{id}/print-label}).
+ * Printer-level label operations — actions on the printer itself rather than on an item (those live beside the item:
+ * {@code /items/{id}/print-label}).
  */
 @Path("/api/v1/labels")
 @Produces(MediaType.APPLICATION_JSON)
@@ -42,8 +42,7 @@ public class LabelsResource {
   @Inject
   BusClient bus;
 
-  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url",
-      defaultValue = "http://localhost:8081")
+  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url", defaultValue = "http://localhost:8081")
   String qrBaseUrl;
 
   /** Public addressing is the gateway's knowledge; the worker renders it. */
@@ -52,9 +51,8 @@ public class LabelsResource {
   }
 
   /**
-   * Feed blank tape and cut — the "extend the tape" action that ends a
-   * chain-printing run. 202 = accepted (see print-batch); 503 when no
-   * printer is listening.
+   * Feed blank tape and cut — the "extend the tape" action that ends a chain-printing run. 202 = accepted (see
+   * print-batch); 503 when no printer is listening.
    */
   @POST
   @Path("/feed")
@@ -66,15 +64,12 @@ public class LabelsResource {
   }
 
   /**
-   * Print several labels as ONE printer job (ongoing item 10): on continuous
-   * tape they share a single leader instead of wasting ~25 mm per cut. Body:
-   * {@code {"itemIds":[...], "format":"large"?, "halfCut":true?}} —
-   * halfCut (default true) perforates between labels so the strip tears
-   * apart by hand; false takes a full cut between each. 400 on an empty list,
-   * 404 when any id is unknown (the whole run is refused rather than
-   * printing a partial strip), 503 when no printer is listening.
-   * Answers 202: the run was ACCEPTED; the outcome follows on the status
-   * stream, because a TCP-9100 printer never reports completion.
+   * Print several labels as ONE printer job (ongoing item 10): on continuous tape they share a single leader instead of
+   * wasting ~25 mm per cut. Body: {@code {"itemIds":[...], "format":"large"?, "halfCut":true?}} — halfCut (default
+   * true) perforates between labels so the strip tears apart by hand; false takes a full cut between each. 400 on an
+   * empty list, 404 when any id is unknown (the whole run is refused rather than printing a partial strip), 503 when no
+   * printer is listening. Answers 202: the run was ACCEPTED; the outcome follows on the status stream, because a
+   * TCP-9100 printer never reports completion.
    */
   @POST
   @Path("/print-batch")
@@ -83,10 +78,8 @@ public class LabelsResource {
     JsonObject in = body == null || body.isBlank() ? new JsonObject() : new JsonObject(body);
     io.vertx.core.json.JsonArray ids = in.getJsonArray("itemIds");
     if (ids == null || ids.isEmpty())
-      return java.util.concurrent.CompletableFuture.completedStage(Response
-          .status(Response.Status.BAD_REQUEST)
-          .entity(new JsonObject().put("error", "itemIds is required and must be non-empty").encode())
-          .build());
+      return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
+          .entity(new JsonObject().put("error", "itemIds is required and must be non-empty").encode()).build());
     // public addressing belongs to this tier, so the scan URLs are resolved
     // here and travel with the envelope
     JsonObject urls = new JsonObject();

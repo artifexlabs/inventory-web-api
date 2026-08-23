@@ -28,10 +28,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Translates bus outcomes to HTTP. Worker refusals carry HTTP-aligned
- * failure codes (400/401/403/404/409/503) that map one-to-one; transport
- * failures (no handler, timeout) surface as 503 — the fabric is down, not
- * the request wrong.
+ * Translates bus outcomes to HTTP. Worker refusals carry HTTP-aligned failure codes (400/401/403/404/409/503) that map
+ * one-to-one; transport failures (no handler, timeout) surface as 503 — the fabric is down, not the request wrong.
  */
 final class BusResponses {
 

@@ -41,25 +41,22 @@ import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
 
 /**
- * Fans the {@code status.events} bus topic out to connected browsers and
- * apps (PLAN.md Phase 21, ask 3). The gateway subscribes to the bus ONCE and
- * distributes per connection — the event bus itself is never exposed to a
- * client, because bus membership is access (VERTICLES.md).
+ * Fans the {@code status.events} bus topic out to connected browsers and apps (PLAN.md Phase 21, ask 3). The gateway
+ * subscribes to the bus ONCE and distributes per connection — the event bus itself is never exposed to a client,
+ * because bus membership is access (VERTICLES.md).
  *
  * <p>
  * <b>Scoping is a security boundary.</b> A subscriber sees only:
  * <ul>
  * <li>events whose {@code actor} is that user, and</li>
- * <li>if the user is an admin, unattributed system events (a printer that
- * cannot be reached belongs to whoever runs the system, not to a user), and
- * everything when they explicitly ask for the firehose.</li>
+ * <li>if the user is an admin, unattributed system events (a printer that cannot be reached belongs to whoever runs the
+ * system, not to a user), and everything when they explicitly ask for the firehose.</li>
  * </ul>
  *
  * <p>
- * Delivery is live plus SHALLOW replay: a bounded, time-limited ring lets a
- * client that reconnects with {@code Last-Event-ID} catch the gap it missed.
- * This is deliberately not durable and not guaranteed — the audit trail is
- * the record; this is the doorbell.
+ * Delivery is live plus SHALLOW replay: a bounded, time-limited ring lets a client that reconnects with
+ * {@code Last-Event-ID} catch the gap it missed. This is deliberately not durable and not guaranteed — the audit trail
+ * is the record; this is the doorbell.
  */
 @ApplicationScoped
 public class StatusStreamBroadcaster {
@@ -77,9 +74,8 @@ public class StatusStreamBroadcaster {
   Vertx vertx;
 
   /**
-   * One connected client and the scope it may observe. Deliberately NOT
-   * typed to the SSE API: the scoping rules are a security boundary and must
-   * be testable without a servlet container.
+   * One connected client and the scope it may observe. Deliberately NOT typed to the SSE API: the scoping rules are a
+   * security boundary and must be testable without a servlet container.
    */
   final static class Subscriber {
     private final java.util.function.Consumer<StatusEvent> sender;
@@ -89,7 +85,8 @@ public class StatusStreamBroadcaster {
     private final boolean firehose;
 
     Subscriber(java.util.function.Consumer<StatusEvent> sender, java.util.function.BooleanSupplier closed,
-        String userId, boolean admin, boolean firehose) {
+        String userId, boolean admin, boolean firehose)
+    {
       this.sender = sender;
       this.closed = closed;
       this.userId = userId;
@@ -114,12 +111,8 @@ public class StatusStreamBroadcaster {
 
   /** The SSE wire shape: severity is the event NAME, the JSON body the data. */
   private static OutboundSseEvent toSse(Sse sse, StatusEvent event) {
-    return sse.newEventBuilder()
-        .id(event.id())
-        .name(event.severity().name().toLowerCase(java.util.Locale.ROOT))
-        .mediaType(MediaType.APPLICATION_JSON_TYPE)
-        .data(String.class, StatusEvents.toWire(event).encode())
-        .build();
+    return sse.newEventBuilder().id(event.id()).name(event.severity().name().toLowerCase(java.util.Locale.ROOT))
+        .mediaType(MediaType.APPLICATION_JSON_TYPE).data(String.class, StatusEvents.toWire(event).encode()).build();
   }
 
   /** Subscribe to the bus once, at startup, for the whole gateway. */
@@ -181,13 +174,12 @@ public class StatusStreamBroadcaster {
   }
 
   /**
-   * Register one client connection. {@code firehose} is honored only for
-   * admins; everyone else gets their own events regardless of what they ask.
+   * Register one client connection. {@code firehose} is honored only for admins; everyone else gets their own events
+   * regardless of what they ask.
    */
-  public void register(SseEventSink sink, Sse sse, String userId, boolean admin, boolean firehose,
-      String lastEventId) {
-    register(new Subscriber(event -> sink.send(toSse(sse, event)), sink::isClosed, userId, admin,
-        firehose && admin), lastEventId);
+  public void register(SseEventSink sink, Sse sse, String userId, boolean admin, boolean firehose, String lastEventId) {
+    register(new Subscriber(event -> sink.send(toSse(sse, event)), sink::isClosed, userId, admin, firehose && admin),
+        lastEventId);
   }
 
   /** Attach an already-built subscriber (the SSE-free seam the scoping tests use). */

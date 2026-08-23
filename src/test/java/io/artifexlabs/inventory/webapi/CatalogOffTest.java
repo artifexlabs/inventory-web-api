@@ -31,8 +31,8 @@ import io.restassured.http.ContentType;
 import io.vertx.core.json.JsonObject;
 
 /**
- * {@code inventory.catalog=off}: lookups answer 503, but the catalog is
- * prefill — creation from the request body alone still works.
+ * {@code inventory.catalog=off}: lookups answer 503, but the catalog is prefill — creation from the request body alone
+ * still works.
  */
 @QuarkusTest
 @TestProfile(CatalogOffTest.OffProfile.class)
@@ -49,16 +49,14 @@ public class CatalogOffTest {
 
   @Test
   public void testOffDisablesLookupsButNeverCreation() {
-    given().header("Authorization", "Bearer " + TOKEN)
-        .get("/api/v1/catalog/upc/0049000006346").then().statusCode(503);
+    given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/catalog/upc/0049000006346").then().statusCode(503);
 
     String body = given().header("Authorization", "Bearer " + TOKEN).contentType(ContentType.JSON)
         .body(new JsonObject().put("name", "offline-widget").put("type", "tool").encode())
         .post("/api/v1/items/from-upc?gtin=0049000006346").then().statusCode(201)
         .body("item.name", equalTo("offline-widget")).extract().asString();
     String itemId = new JsonObject(body).getJsonObject("item").getString("id");
-    given().header("Authorization", "Bearer " + TOKEN)
-        .get("/api/v1/items/by-identity?kind=upc&value=0049000006346").then().statusCode(200)
-        .body("id", equalTo(itemId));
+    given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/items/by-identity?kind=upc&value=0049000006346")
+        .then().statusCode(200).body("id", equalTo(itemId));
   }
 }

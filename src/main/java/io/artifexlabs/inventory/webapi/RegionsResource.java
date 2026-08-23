@@ -34,9 +34,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Region-id-scoped operations over the bus fabric (asset-scoped ones live on
- * {@link AssetsResource}). {@code make-item} is draw-then-describe step 2: an
- * existing bare box gets its data and becomes an item, transactionally.
+ * Region-id-scoped operations over the bus fabric (asset-scoped ones live on {@link AssetsResource}). {@code make-item}
+ * is draw-then-describe step 2: an existing bare box gets its data and becomes an item, transactionally.
  */
 @Path("/api/v1/regions")
 public class RegionsResource {

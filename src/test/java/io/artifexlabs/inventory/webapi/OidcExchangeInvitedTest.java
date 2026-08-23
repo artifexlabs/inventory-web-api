@@ -62,8 +62,8 @@ public class OidcExchangeInvitedTest {
 
   @Test
   public void testUninvitedEmailForbidden() {
-    exchange("test-secret", "stranger@example.com").statusCode(403)
-        .body("error", equalTo("not invited: stranger@example.com"));
+    exchange("test-secret", "stranger@example.com").statusCode(403).body("error",
+        equalTo("not invited: stranger@example.com"));
   }
 
   @Test

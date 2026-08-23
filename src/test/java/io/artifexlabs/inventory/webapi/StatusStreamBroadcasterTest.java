@@ -30,9 +30,8 @@ import org.junit.jupiter.api.Test;
 import io.artifexlabs.inventory.api.events.StatusEvent;
 
 /**
- * The SSE fan-out's scoping rules are a SECURITY boundary — one user must
- * never receive another's operational detail — so they are pinned here
- * without a server, against the broadcaster's SSE-free seam.
+ * The SSE fan-out's scoping rules are a SECURITY boundary — one user must never receive another's operational detail —
+ * so they are pinned here without a server, against the broadcaster's SSE-free seam.
  */
 public class StatusStreamBroadcasterTest {
 
@@ -58,8 +57,8 @@ public class StatusStreamBroadcasterTest {
   }
 
   private static StatusEvent event(String code, String actor, String id) {
-    return StatusEvent.error(code, "Something went wrong.").source("test").actor(actor).build()
-        .stamped(id, Instant.now());
+    return StatusEvent.error(code, "Something went wrong.").source("test").actor(actor).build().stamped(id,
+        Instant.now());
   }
 
   @Test
@@ -142,8 +141,7 @@ public class StatusStreamBroadcasterTest {
     Client alice = new Client();
     alice.attach(b, ALICE, false, false, "01LONG-EVICTED");
 
-    assertTrue(alice.codes().isEmpty(),
-        "an unknown cursor means the gap is unknowable — send nothing, resume live");
+    assertTrue(alice.codes().isEmpty(), "an unknown cursor means the gap is unknowable — send nothing, resume live");
   }
 
   @Test
@@ -169,7 +167,6 @@ public class StatusStreamBroadcasterTest {
     Client alice = new Client();
     // the oldest surviving entry is the cursor; everything after it replays
     alice.attach(b, ALICE, false, false, "01E" + 50);
-    assertEquals(StatusStreamBroadcaster.RING_SIZE - 1, alice.received.size(),
-        "replay cannot exceed the ring");
+    assertEquals(StatusStreamBroadcaster.RING_SIZE - 1, alice.received.size(), "replay cannot exceed the ring");
   }
 }

@@ -27,11 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 
 /**
- * A TCP 9100 sink standing in for the Brother PT-P750W: accepts one connection
- * at a time, swallows the raster job, and keeps the last payload for
- * assertions. Configures the app with the REAL BrotherPTouchPrinter pointed at
- * it, so the print path (including its pool-thread future completion) runs
- * exactly as it does against hardware.
+ * A TCP 9100 sink standing in for the Brother PT-P750W: accepts one connection at a time, swallows the raster job, and
+ * keeps the last payload for assertions. Configures the app with the REAL BrotherPTouchPrinter pointed at it, so the
+ * print path (including its pool-thread future completion) runs exactly as it does against hardware.
  */
 public class FakeRasterPrinterResource implements QuarkusTestResourceLifecycleManager {
 
@@ -60,11 +58,8 @@ public class FakeRasterPrinterResource implements QuarkusTestResourceLifecycleMa
     }, "fake-raster-printer");
     this.acceptor.setDaemon(true);
     this.acceptor.start();
-    return Map.of(
-        "inventory.printer", "brother-p750w",
-        "inventory.printer.host", "127.0.0.1",
-        "inventory.printer.port", String.valueOf(this.server.getLocalPort()),
-        "inventory.printer.tape-mm", "24");
+    return Map.of("inventory.printer", "brother-p750w", "inventory.printer.host", "127.0.0.1", "inventory.printer.port",
+        String.valueOf(this.server.getLocalPort()), "inventory.printer.tape-mm", "24");
   }
 
   @Override

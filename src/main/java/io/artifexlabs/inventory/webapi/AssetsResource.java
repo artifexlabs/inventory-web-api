@@ -33,10 +33,8 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Asset download and deletion by asset id, over the bus fabric. Item-scoped
- * upload/list live on {@link ItemsResource} (JAX-RS resolves the resource
- * class by longest class-level path, so /items/... paths must live under
- * that class).
+ * Asset download and deletion by asset id, over the bus fabric. Item-scoped upload/list live on {@link ItemsResource}
+ * (JAX-RS resolves the resource class by longest class-level path, so /items/... paths must live under that class).
  */
 @Path("/api/v1/assets")
 public class AssetsResource {
@@ -57,22 +55,21 @@ public class AssetsResource {
   }
 
   /**
-   * Replace the asset's content in place (same id; old bytes are archived in
-   * the asset.replace audit event). Body is the raw new content, like upload.
+   * Replace the asset's content in place (same id; old bytes are archived in the asset.replace audit event). Body is
+   * the raw new content, like upload.
    */
   @jakarta.ws.rs.PUT
   @Path("/{id}")
   @jakarta.ws.rs.Consumes(jakarta.ws.rs.core.MediaType.WILDCARD)
   public CompletionStage<Response> replace(@PathParam("id") String id,
       @jakarta.ws.rs.HeaderParam(FILENAME_HEADER) String filename,
-      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType,
-      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng, byte[] body) {
+      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType, @jakarta.ws.rs.QueryParam("lat") Double lat,
+      @jakarta.ws.rs.QueryParam("long") Double lng, byte[] body) {
     String name = filename == null || filename.isBlank() ? "unnamed" : filename;
-    String type = contentType == null || contentType.isBlank()
-        ? jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM : contentType;
+    String type = contentType == null || contentType.isBlank() ? jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM
+        : contentType;
     var content = new io.artifexlabs.inventory.impl.bus.DefaultAssetContent(name, type, body,
-        lat != null && lng != null
-            ? java.util.Optional.of(new io.artifexlabs.inventory.api.LatLong(lat, lng))
+        lat != null && lng != null ? java.util.Optional.of(new io.artifexlabs.inventory.api.LatLong(lat, lng))
             : java.util.Optional.empty());
     return BusResponses.respond(this.bus.request(BusActions.ASSETS_REPLACE, id, content.toJson()),
         info -> Response.ok(((JsonObject) info).encode()).build());

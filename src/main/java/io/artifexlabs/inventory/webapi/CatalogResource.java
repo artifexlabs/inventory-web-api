@@ -31,10 +31,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * External-catalog prefill for scanned barcodes: what the configured
- * catalogs know about a GTIN, so a create form can start filled in. 400 for
- * a bad check digit, 404 when no catalog knows the code, 503 when lookups
- * are disabled ({@code inventory.catalog=off}).
+ * External-catalog prefill for scanned barcodes: what the configured catalogs know about a GTIN, so a create form can
+ * start filled in. 400 for a bad check digit, 404 when no catalog knows the code, 503 when lookups are disabled
+ * ({@code inventory.catalog=off}).
  */
 @Path("/api/v1/catalog")
 @Produces(MediaType.APPLICATION_JSON)
@@ -46,8 +45,7 @@ public class CatalogResource {
   @GET
   @Path("/upc/{gtin}")
   public CompletionStage<Response> lookup(@PathParam("gtin") String gtin) {
-    return BusResponses.respond(
-        this.bus.request(BusActions.CATALOG_UPC, null, new JsonObject().put("gtin", gtin)),
+    return BusResponses.respond(this.bus.request(BusActions.CATALOG_UPC, null, new JsonObject().put("gtin", gtin)),
         body -> Response.ok(((JsonObject) body).encode()).build());
   }
 }

@@ -33,21 +33,21 @@ import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * CRUD over the inventory — a thin authenticated gateway: every operation
- * becomes an envelope on the bus fabric, answered by inventory-server's
- * workers. The wire format is exactly {@link ItemFactory#serialize(Item)} —
- * the same JSON that travels the event bus, so REST and bus consumers share
- * one contract.
+ * CRUD over the inventory — a thin authenticated gateway: every operation becomes an envelope on the bus fabric,
+ * answered by inventory-server's workers. The wire format is exactly {@link ItemFactory#serialize(Item)} — the same
+ * JSON that travels the event bus, so REST and bus consumers share one contract.
  */
 @Path("/api/v1/items")
 @Produces(MediaType.APPLICATION_JSON)
@@ -90,9 +90,8 @@ public class ItemsResource {
   public CompletionStage<Response> updateItem(@PathParam("id") String id, String body) {
     Item item = ItemFactory.deserialize(new JsonObject(body));
     if (!item.getId().equals(id))
-      return java.util.concurrent.CompletableFuture.completedStage(
-          Response.status(Response.Status.BAD_REQUEST)
-              .entity(new JsonObject().put("error", "body id does not match path id").encode()).build());
+      return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
+          .entity(new JsonObject().put("error", "body id does not match path id").encode()).build());
     var update = new DefaultItemUpdate(id, item);
     return BusResponses.respond(this.bus.request(BusActions.ITEMS_UPDATE, id, update.toJson()),
         updated -> Response.ok(((JsonObject) updated).encode()).build());
@@ -101,8 +100,7 @@ public class ItemsResource {
   @DELETE
   @Path("/{id}")
   public CompletionStage<Response> deleteItem(@PathParam("id") String id) {
-    return BusResponses.respond(this.bus.request(BusActions.ITEMS_DELETE, id, null),
-        v -> Response.noContent().build());
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_DELETE, id, null), v -> Response.noContent().build());
   }
 
   /** The single container (Phase 15 tree); 404 when the item is a root. */
@@ -126,15 +124,13 @@ public class ItemsResource {
   @Path("/{id}/tags")
   public CompletionStage<Response> tag(@PathParam("id") String id, String body) {
     JsonObject j = new JsonObject(body);
-    return BusResponses.respond(this.bus.request(BusActions.ITEMS_TAG, id, j),
-        v -> Response.noContent().build());
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_TAG, id, j), v -> Response.noContent().build());
   }
 
   @DELETE
   @Path("/{id}/tags/{key}")
   public CompletionStage<Response> untag(@PathParam("id") String id, @PathParam("key") String key) {
-    return BusResponses.respond(
-        this.bus.request(BusActions.ITEMS_UNTAG, id, new JsonObject().put("key", key)),
+    return BusResponses.respond(this.bus.request(BusActions.ITEMS_UNTAG, id, new JsonObject().put("key", key)),
         v -> Response.noContent().build());
   }
 
@@ -165,8 +161,7 @@ public class ItemsResource {
   public CompletionStage<Response> removeIdentity(@PathParam("id") String id, @PathParam("kind") String kind,
       @PathParam("value") String value) {
     return BusResponses.respond(
-        this.bus.request(BusActions.ITEMS_IDENTITY_REMOVE, id,
-            new JsonObject().put("kind", kind).put("value", value)),
+        this.bus.request(BusActions.ITEMS_IDENTITY_REMOVE, id, new JsonObject().put("kind", kind).put("value", value)),
         v -> Response.noContent().build());
   }
 
@@ -220,48 +215,39 @@ public class ItemsResource {
   @Consumes(MediaType.WILDCARD)
   public CompletionStage<Response> uploadAsset(@PathParam("itemId") String itemId,
       @jakarta.ws.rs.HeaderParam(AssetsResource.FILENAME_HEADER) String filename,
-      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType,
-      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng,
-      @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
+      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType, @jakarta.ws.rs.QueryParam("lat") Double lat,
+      @jakarta.ws.rs.QueryParam("long") Double lng, @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
     String name = filename == null || filename.isBlank() ? "unnamed" : filename;
     String type = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM : contentType;
     // explicit client coordinates (a phone's GPS at capture) beat EXIF
     var upload = new DefaultAssetUpload(itemId, name, type, body,
-        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(),
-        kind);
+        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(), kind);
     return BusResponses.respond(this.bus.request(BusActions.ASSETS_STORE, itemId, upload.toJson()),
         info -> Response.status(Response.Status.CREATED).entity(((JsonObject) info).encode()).build());
   }
 
   /**
-   * A picture that IS a thing (ongoing item 2): create a NEW item — typically
-   * {@code type=location} — with the uploaded photo attached, one
-   * transaction. Coordinates: explicit {@code lat}/{@code long} beat EXIF;
-   * either pins the created item itself. 404 when {@code container} names an
-   * unknown item.
+   * A picture that IS a thing (ongoing item 2): create a NEW item — typically {@code type=location} — with the uploaded
+   * photo attached, one transaction. Coordinates: explicit {@code lat}/{@code long} beat EXIF; either pins the created
+   * item itself. 404 when {@code container} names an unknown item.
    */
   @POST
   @Path("/from-photo")
   @Consumes(MediaType.WILDCARD)
-  public CompletionStage<Response> createItemFromPhoto(
-      @jakarta.ws.rs.QueryParam("name") String name,
-      @jakarta.ws.rs.QueryParam("displayName") String displayName,
-      @jakarta.ws.rs.QueryParam("type") String type,
+  public CompletionStage<Response> createItemFromPhoto(@jakarta.ws.rs.QueryParam("name") String name,
+      @jakarta.ws.rs.QueryParam("displayName") String displayName, @jakarta.ws.rs.QueryParam("type") String type,
       @jakarta.ws.rs.QueryParam("container") String containerId,
       @jakarta.ws.rs.HeaderParam(AssetsResource.FILENAME_HEADER) String filename,
-      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType,
-      @jakarta.ws.rs.QueryParam("lat") Double lat, @jakarta.ws.rs.QueryParam("long") Double lng,
-      @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
+      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType, @jakarta.ws.rs.QueryParam("lat") Double lat,
+      @jakarta.ws.rs.QueryParam("long") Double lng, @jakarta.ws.rs.QueryParam("kind") String kind, byte[] body) {
     if (name == null || name.isBlank())
       return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
           .entity(new JsonObject().put("error", "name is required").encode()).build());
     String fname = filename == null || filename.isBlank() ? "unnamed" : filename;
-    String ctype = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM
-        : contentType;
-    var req = new io.artifexlabs.inventory.impl.bus.DefaultPhotoItemRequest(name, displayName, type, containerId,
-        fname, ctype, body,
-        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(),
-        kind);
+    String ctype = contentType == null || contentType.isBlank() ? MediaType.APPLICATION_OCTET_STREAM : contentType;
+    var req = new io.artifexlabs.inventory.impl.bus.DefaultPhotoItemRequest(name, displayName, type, containerId, fname,
+        ctype, body,
+        lat != null && lng != null ? java.util.Optional.of(new LatLong(lat, lng)) : java.util.Optional.empty(), kind);
     return BusResponses.respond(this.bus.request(BusActions.ASSETS_CREATE_ITEM, null, req.toJson()),
         made -> Response.status(Response.Status.CREATED).entity(((JsonObject) made).encode()).build());
   }
@@ -273,8 +259,7 @@ public class ItemsResource {
         body -> Response.ok(((JsonArray) body).encode()).build());
   }
 
-  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url",
-      defaultValue = "http://localhost:8081")
+  @org.eclipse.microprofile.config.inject.ConfigProperty(name = "inventory.qr.base-url", defaultValue = "http://localhost:8081")
   String qrBaseUrl;
 
   /** Public addressing is the gateway's knowledge; the worker renders it. */
@@ -283,11 +268,9 @@ public class ItemsResource {
   }
 
   /**
-   * A scanned barcode that IS a thing: catalog prefill + item + identity +
-   * tags + image asset, one worker-side flow (the catalog is prefill —
-   * a miss still creates from the body). Body fields (name, displayName,
-   * type, description, weightGrams) override the catalog. 201 {item,
-   * asset?}; 400 bad check digit or no name from either side; 404 unknown
+   * A scanned barcode that IS a thing: catalog prefill + item + identity + tags + image asset, one worker-side flow
+   * (the catalog is prefill — a miss still creates from the body). Body fields (name, displayName, type, description,
+   * weightGrams) override the catalog. 201 {item, asset?}; 400 bad check digit or no name from either side; 404 unknown
    * container; 409 when the code already claims another item.
    */
   @POST
@@ -306,8 +289,7 @@ public class ItemsResource {
   @Path("/{id}/qr.png")
   @Produces("image/png")
   public CompletionStage<Response> qr(@PathParam("id") String id) {
-    return BusResponses.respond(
-        this.bus.request(BusActions.LABELS_QR, id, new JsonObject().put("url", scanUrl(id))),
+    return BusResponses.respond(this.bus.request(BusActions.LABELS_QR, id, new JsonObject().put("url", scanUrl(id))),
         body -> Response.ok(((JsonObject) body).getBinary("png"), "image/png").build());
   }
 
@@ -323,5 +305,77 @@ public class ItemsResource {
     // printed — and the outcome arrives on the status stream (PLAN.md Phase 21)
     return BusResponses.respond(this.bus.request(BusActions.LABELS_PRINT, id, data),
         v -> Response.accepted(((JsonObject) v).encode()).type(MediaType.APPLICATION_JSON).build());
+  }
+
+  // ---- data manifests (ongoing item 6) ----------------------------------
+  // These live HERE, not on DataResource, because JAX-RS root-resource
+  // matching does not backtrack: this resource owns /api/v1/items and every
+  // path under it (PLAN.md's eighth milestone recorded the same trap).
+
+  /** Replace a medium's whole listing. Snapshot semantics: this IS the manifest now. */
+  @PUT
+  @Path("/{id}/data/manifest")
+  @Consumes({
+      MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN
+  })
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> replaceManifest(@PathParam("id") String id,
+      @jakarta.ws.rs.HeaderParam("Content-Type") String contentType, String body) {
+    final JsonArray entries;
+    try {
+      entries = contentType != null && contentType.startsWith(MediaType.TEXT_PLAIN)
+          ? DataResource.parseDigestLines(body)
+          : new JsonArray(body == null || body.isBlank() ? "[]" : body);
+    } catch (RuntimeException bad) {
+      return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)
+          .entity(new JsonObject().put("error", String.valueOf(bad.getMessage())).encode()).build());
+    }
+    return BusResponses.respond(
+        this.bus.request(BusActions.DATA_REPLACE_MANIFEST, id, new JsonObject().put("entries", entries)),
+        stored -> Response.ok(((JsonObject) stored).encode()).build());
+  }
+
+  /** A page of the listing; {@code query} is a path substring. */
+  @GET
+  @Path("/{id}/data/entries")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> entries(@PathParam("id") String id, @QueryParam("query") String query,
+      @QueryParam("page") @DefaultValue("0") int page, @QueryParam("size") @DefaultValue("100") int size) {
+    JsonObject data = new JsonObject().put("page", page).put("size", size);
+    if (query != null && !query.isBlank())
+      data.put("query", query);
+    return BusResponses.respond(this.bus.request(BusActions.DATA_ENTRIES, id, data),
+        list -> Response.ok(((JsonArray) list).encode()).build());
+  }
+
+  /** Entry count, total bytes, archive count. */
+  @GET
+  @Path("/{id}/data/summary")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> summary(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_SUMMARY, id, null),
+        s -> Response.ok(((JsonObject) s).encode()).build());
+  }
+
+  /** Media holding the same files at the same paths — the mirror question. */
+  @GET
+  @Path("/{id}/data/mirrors")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> mirrors(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_MIRRORS, id, null),
+        found -> Response.ok(((JsonArray) found).encode()).build());
+  }
+
+  /** Correct a path without re-hashing the medium; renames descendants too. */
+  @POST
+  @Path("/{id}/data/rename")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> rename(@PathParam("id") String id, String body) {
+    JsonObject j = new JsonObject(body == null || body.isBlank() ? "{}" : body);
+    return BusResponses.respond(
+        this.bus.request(BusActions.DATA_RENAME_PATH, id,
+            new JsonObject().put("from", j.getString("from")).put("to", j.getString("to"))),
+        r -> Response.ok(((JsonObject) r).encode()).build());
   }
 }

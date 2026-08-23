@@ -44,8 +44,8 @@ public class QrAndLabelTest {
   @Test
   public void testQrPngDecodesToScanUrl() throws Exception {
     String id = createItem("qr-thing");
-    byte[] png = given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/items/" + id + "/qr.png")
-        .then().statusCode(200).contentType("image/png").extract().asByteArray();
+    byte[] png = given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/items/" + id + "/qr.png").then()
+        .statusCode(200).contentType("image/png").extract().asByteArray();
 
     // PNG magic bytes, then decode the QR back to the deep link
     Assertions.assertEquals((byte) 0x89, png[0]);
@@ -70,8 +70,7 @@ public class QrAndLabelTest {
         .statusCode(202).body("accepted", org.hamcrest.Matchers.is(true));
     given().header("Authorization", "Bearer " + TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200)
         .body("action", org.hamcrest.Matchers.hasItem("label.print"));
-    given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/nope/print-label").then()
-        .statusCode(404);
+    given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/nope/print-label").then().statusCode(404);
   }
 
   @Test

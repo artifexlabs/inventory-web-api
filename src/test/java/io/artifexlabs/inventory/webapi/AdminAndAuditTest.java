@@ -43,9 +43,10 @@ public class AdminAndAuditTest {
   }
 
   private static String loginToken(String email) {
-    return new JsonObject(given().contentType(ContentType.JSON)
-        .body(new JsonObject().put("email", email).put("password", "pw").encode()).post("/api/v1/auth/login")
-        .then().statusCode(200).extract().asString()).getString("token");
+    return new JsonObject(
+        given().contentType(ContentType.JSON).body(new JsonObject().put("email", email).put("password", "pw").encode())
+            .post("/api/v1/auth/login").then().statusCode(200).extract().asString())
+        .getString("token");
   }
 
   @Test
@@ -66,16 +67,16 @@ public class AdminAndAuditTest {
     String id = created.getString("id");
 
     // appears in the list
-    withToken(ADMIN_TOKEN).get("/api/v1/admin/users").then().statusCode(200)
-        .body("email", org.hamcrest.Matchers.hasItem("lifecycle@example.com"));
+    withToken(ADMIN_TOKEN).get("/api/v1/admin/users").then().statusCode(200).body("email",
+        org.hamcrest.Matchers.hasItem("lifecycle@example.com"));
 
     // promote to admin, then verify the flag via a fresh login
     withToken(ADMIN_TOKEN).body(new JsonObject().put("admin", true).encode())
         .post("/api/v1/admin/users/" + id + "/admin").then().statusCode(200).body("admin", is(true));
 
     // audit trail recorded both actions against this user id
-    withToken(ADMIN_TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200)
-        .body("action", org.hamcrest.Matchers.hasItems("user.create", "user.set-admin"));
+    withToken(ADMIN_TOKEN).get("/api/v1/audit/target/" + id).then().statusCode(200).body("action",
+        org.hamcrest.Matchers.hasItems("user.create", "user.set-admin"));
 
     // delete; a second delete 404s
     withToken(ADMIN_TOKEN).delete("/api/v1/admin/users/" + id).then().statusCode(204);
@@ -104,15 +105,14 @@ public class AdminAndAuditTest {
 
     withToken(ADMIN_TOKEN).delete("/api/v1/admin/tokens/" + issued).then().statusCode(204);
     withToken(token).get("/api/v1/items").then().statusCode(401);
-    withToken(ADMIN_TOKEN).get("/api/v1/admin/users/" + id + "/tokens").then().statusCode(200)
-        .body("[0].revoked", is(true));
+    withToken(ADMIN_TOKEN).get("/api/v1/admin/users/" + id + "/tokens").then().statusCode(200).body("[0].revoked",
+        is(true));
     withToken(ADMIN_TOKEN).delete("/api/v1/admin/tokens/" + issued).then().statusCode(404);
   }
 
   @Test
   public void testGlobalAuditFeedForAdmin() {
-    withToken(ADMIN_TOKEN)
-        .body(new JsonObject().put("name", "audited-item").put("type", "audit-test").encode())
+    withToken(ADMIN_TOKEN).body(new JsonObject().put("name", "audited-item").put("type", "audit-test").encode())
         .post("/api/v1/items").then().statusCode(201);
     withToken(ADMIN_TOKEN).get("/api/v1/audit?limit=100").then().statusCode(200).body("size()", greaterThan(0));
     withToken(ADMIN_TOKEN).get("/api/v1/audit?limit=1").then().statusCode(200).body("size()", equalTo(1));

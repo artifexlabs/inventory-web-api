@@ -30,16 +30,13 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Guards every REST resource with a bearer token, resolved to its user by
- * the auth worker over the bus ({@code auth.token}, pre-auth: the fabric
- * token vouches for the gateway itself). This is the authentication boundary
- * the architecture demands: every external input crosses it here, and the
- * user it resolves is what every subsequent envelope acts for. The login and
- * exchange endpoints are the sole exemptions.
+ * Guards every REST resource with a bearer token, resolved to its user by the auth worker over the bus
+ * ({@code auth.token}, pre-auth: the fabric token vouches for the gateway itself). This is the authentication boundary
+ * the architecture demands: every external input crosses it here, and the user it resolves is what every subsequent
+ * envelope acts for. The login and exchange endpoints are the sole exemptions.
  *
- * Reactive on purpose: the filter runs on the Vert.x event loop and the bus
- * round trip completes on one — joining here would deadlock. Returning a Uni
- * lets the request suspend instead.
+ * Reactive on purpose: the filter runs on the Vert.x event loop and the bus round trip completes on one — joining here
+ * would deadlock. Returning a Uni lets the request suspend instead.
  */
 public class BearerTokenFilter {
 
@@ -63,8 +60,7 @@ public class BearerTokenFilter {
         .map(user -> {
           this.currentUser.set(UserFactory.deserialize((JsonObject) user));
           return (Response) null;
-        })
-        .onFailure().recoverWithItem(BearerTokenFilter::unauthorized);
+        }).onFailure().recoverWithItem(BearerTokenFilter::unauthorized);
   }
 
   private static Response unauthorized() {

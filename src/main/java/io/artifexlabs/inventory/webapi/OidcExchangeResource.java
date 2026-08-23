@@ -36,17 +36,15 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Trusted webapp-to-gateway identity exchange for OIDC logins: the webapp has
- * already verified the user's identity with the provider, and presents the
- * shared secret plus the verified claims to obtain an API token. The secret
- * gate is HTTP-tier policy and stays here; the identity/link/provision work
- * is the auth worker's, reached pre-auth over the bus.
+ * Trusted webapp-to-gateway identity exchange for OIDC logins: the webapp has already verified the user's identity with
+ * the provider, and presents the shared secret plus the verified claims to obtain an API token. The secret gate is
+ * HTTP-tier policy and stays here; the identity/link/provision work is the auth worker's, reached pre-auth over the
+ * bus.
  *
- * When the body carries {@code provider} + {@code subject}, identity wins
- * over email (providers like Apple hand out relay addresses, so email is
- * profile data, not the key). Disabled entirely (404) until
- * {@code inventory.oidc.exchange-secret} is configured. Provisioning policy
- * ({@code inventory.oidc.provision}) is enforced by the worker.
+ * When the body carries {@code provider} + {@code subject}, identity wins over email (providers like Apple hand out
+ * relay addresses, so email is profile data, not the key). Disabled entirely (404) until
+ * {@code inventory.oidc.exchange-secret} is configured. Provisioning policy ({@code inventory.oidc.provision}) is
+ * enforced by the worker.
  */
 @Path("/api/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)

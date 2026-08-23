@@ -34,10 +34,9 @@ import io.quarkus.test.junit.TestProfile;
 import io.vertx.core.json.JsonObject;
 
 /**
- * The whole REST surface against inventory.storage=pg — real Postgres, real
- * Liquibase schema. Covers InventoryBackendProducer's pg arms with behavior:
- * login (PgUserStore + PgTokenService), item CRUD + audit (PgInventorySystem
- * + PgAudit), places-as-containers with tags, assets (PgAssetStore).
+ * The whole REST surface against inventory.storage=pg — real Postgres, real Liquibase schema. Covers
+ * InventoryBackendProducer's pg arms with behavior: login (PgUserStore + PgTokenService), item CRUD + audit
+ * (PgInventorySystem + PgAudit), places-as-containers with tags, assets (PgAssetStore).
  */
 @QuarkusTest
 @TestProfile(PgModeApiTest.PgProfile.class)
@@ -56,8 +55,7 @@ public class PgModeApiTest {
     if (token == null)
       token = given().contentType("application/json")
           .body(new JsonObject().put("email", "admin@example.com").put("password", "change-me").encode())
-          .post("/api/v1/auth/login").then().statusCode(200).body("token", notNullValue()).extract()
-          .path("token");
+          .post("/api/v1/auth/login").then().statusCode(200).body("token", notNullValue()).extract().path("token");
     return token;
   }
 
@@ -74,12 +72,12 @@ public class PgModeApiTest {
   @Order(2)
   public void itemCrudAndAuditLandInPostgres() {
     itemId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .body(new JsonObject().put("name", "pg-item").put("type", "tool").encode()).post("/api/v1/items")
-        .then().statusCode(201).extract().path("id");
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/items").then().statusCode(200)
-        .body("name", hasItem("pg-item"));
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/audit/target/" + itemId).then()
-        .statusCode(200).body("action", hasItem("item.create"));
+        .body(new JsonObject().put("name", "pg-item").put("type", "tool").encode()).post("/api/v1/items").then()
+        .statusCode(201).extract().path("id");
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items").then().statusCode(200).body("name",
+        hasItem("pg-item"));
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/audit/target/" + itemId).then().statusCode(200)
+        .body("action", hasItem("item.create"));
   }
 
   @Test
@@ -87,34 +85,36 @@ public class PgModeApiTest {
   public void placesTagsAndCoordinatesUseThePgStore() {
     // a place is a container with coordinates (Phase 15)
     String placeId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .body(new JsonObject().put("name", "pg-shelf").put("type", "location").encode())
-        .post("/api/v1/items").then().statusCode(201).extract().path("id");
+        .body(new JsonObject().put("name", "pg-shelf").put("type", "location").encode()).post("/api/v1/items").then()
+        .statusCode(201).extract().path("id");
     JsonObject pinned = new JsonObject(given().header("Authorization", "Bearer " + token())
-        .get("/api/v1/items/" + placeId).then().extract().asString())
-        .put("latitude", 10.5).put("longitude", 20.5);
+        .get("/api/v1/items/" + placeId).then().extract().asString()).put("latitude", 10.5).put("longitude", 20.5);
     given().header("Authorization", "Bearer " + token()).contentType("application/json").body(pinned.encode())
         .put("/api/v1/items/" + placeId).then().statusCode(200);
-    given().header("Authorization", "Bearer " + token())
-        .put("/api/v1/items/" + placeId + "/contained/" + itemId).then().statusCode(204);
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + itemId + "/coordinates")
-        .then().statusCode(200).body("latitude", equalTo(10.5f));
+    given().header("Authorization", "Bearer " + token()).put("/api/v1/items/" + placeId + "/contained/" + itemId).then()
+        .statusCode(204);
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + itemId + "/coordinates").then()
+        .statusCode(200).body("latitude", equalTo(10.5f));
     // tags round-trip through item_tags
     given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .body(new JsonObject().put("key", "pgtag").put("value", "v1").encode())
-        .put("/api/v1/items/" + itemId + "/tags").then().statusCode(204);
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/by-tag?key=pgtag").then()
-        .statusCode(200).body("size()", equalTo(1));
+        .body(new JsonObject().put("key", "pgtag").put("value", "v1").encode()).put("/api/v1/items/" + itemId + "/tags")
+        .then().statusCode(204);
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/items/by-tag?key=pgtag").then().statusCode(200)
+        .body("size()", equalTo(1));
   }
 
   @Test
   @Order(4)
   public void assetsUseThePgStore() {
     String assetId = given().header("Authorization", "Bearer " + token()).contentType("image/png")
-        .header("X-Filename", "pg.png").body(new byte[] { (byte) 0x89, 'P', 'N', 'G' })
-        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).extract().path("id");
-    byte[] fetched = given().header("Authorization", "Bearer " + token()).get("/api/v1/assets/" + assetId)
-        .then().statusCode(200).extract().asByteArray();
-    org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[] { (byte) 0x89, 'P', 'N', 'G' }, fetched);
+        .header("X-Filename", "pg.png").body(new byte[] {
+            (byte) 0x89, 'P', 'N', 'G'
+        }).post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).extract().path("id");
+    byte[] fetched = given().header("Authorization", "Bearer " + token()).get("/api/v1/assets/" + assetId).then()
+        .statusCode(200).extract().asByteArray();
+    org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[] {
+        (byte) 0x89, 'P', 'N', 'G'
+    }, fetched);
   }
 
   @Test
@@ -122,8 +122,9 @@ public class PgModeApiTest {
   public void regionsUseThePgStoreTransactionally() {
     // upload a photo of the space (the pg-item acts as the space/container)
     String assetId = given().header("Authorization", "Bearer " + token()).contentType("image/jpeg")
-        .header("X-Filename", "space.jpg").body(new byte[] { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9 })
-        .post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).extract().path("id");
+        .header("X-Filename", "space.jpg").body(new byte[] {
+            (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9
+        }).post("/api/v1/items/" + itemId + "/assets").then().statusCode(201).extract().path("id");
     // draw a bare box (draw-then-describe step 1)
     String boxId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
         .body(new JsonObject().put("x", 0.25).put("y", 0.25).put("w", 0.5).put("h", 0.5).encode())
@@ -132,22 +133,19 @@ public class PgModeApiTest {
         .statusCode(200).body("size()", equalTo(1)).body("[0].itemId", org.hamcrest.Matchers.nullValue());
     // describe it (step 2): item + containment + link, one pg transaction
     String toolId = given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .body(new JsonObject().put("name", "pg-region-tool").put("type", "tool").put("containerId", itemId)
-            .encode())
+        .body(new JsonObject().put("name", "pg-region-tool").put("type", "tool").put("containerId", itemId).encode())
         .post("/api/v1/regions/" + boxId + "/make-item").then().statusCode(201).extract().path("id");
     given().header("Authorization", "Bearer " + token()).get("/api/v1/items/" + toolId + "/container").then()
         .statusCode(200).body("id", equalTo(itemId));
     given().header("Authorization", "Bearer " + token()).get("/api/v1/assets/" + assetId + "/regions").then()
         .statusCode(200).body("[0].itemId", equalTo(toolId));
-    given().header("Authorization", "Bearer " + token()).get("/api/v1/audit/target/" + toolId).then()
-        .statusCode(200).body("action", hasItem("item.create-from-region"))
-        .body("action", hasItem("item.contain"));
+    given().header("Authorization", "Bearer " + token()).get("/api/v1/audit/target/" + toolId).then().statusCode(200)
+        .body("action", hasItem("item.create-from-region")).body("action", hasItem("item.contain"));
     // linked boxes refuse re-description; deletion still works and audits
     given().header("Authorization", "Bearer " + token()).contentType("application/json")
         .body(new JsonObject().put("name", "again").put("type", "t").encode())
         .post("/api/v1/regions/" + boxId + "/make-item").then().statusCode(404);
-    given().header("Authorization", "Bearer " + token()).delete("/api/v1/regions/" + boxId).then()
-        .statusCode(204);
+    given().header("Authorization", "Bearer " + token()).delete("/api/v1/regions/" + boxId).then().statusCode(204);
     given().header("Authorization", "Bearer " + token()).get("/api/v1/assets/" + assetId + "/regions").then()
         .statusCode(200).body("size()", equalTo(0));
   }
@@ -155,8 +153,8 @@ public class PgModeApiTest {
   @Test
   @Order(6)
   public void logoutRevokesThePostgresToken() {
-    given().header("Authorization", "Bearer " + token()).contentType("application/json")
-        .post("/api/v1/auth/logout").then().statusCode(200).body("revoked", equalTo(true));
+    given().header("Authorization", "Bearer " + token()).contentType("application/json").post("/api/v1/auth/logout")
+        .then().statusCode(200).body("revoked", equalTo(true));
     given().header("Authorization", "Bearer " + token()).get("/api/v1/items").then().statusCode(401);
   }
 
@@ -168,8 +166,8 @@ public class PgModeApiTest {
         .post("/api/v1/auth/login").then().statusCode(200).extract().path("token");
     // Self-logout is not audited (only admin revocations are); the pg audit
     // trail carries the mutations from the earlier tests.
-    given().header("Authorization", "Bearer " + fresh).get("/api/v1/audit?limit=50&offset=0").then()
-        .statusCode(200).body("action", hasItem("item.create")).body("action", hasItem("item.tag"))
+    given().header("Authorization", "Bearer " + fresh).get("/api/v1/audit?limit=50&offset=0").then().statusCode(200)
+        .body("action", hasItem("item.create")).body("action", hasItem("item.tag"))
         .body("action", hasItem("asset.attach"));
     given().header("Authorization", "Bearer " + fresh).get("/api/v1/items/" + itemId).then().statusCode(200)
         .body("name", equalTo("pg-item"));

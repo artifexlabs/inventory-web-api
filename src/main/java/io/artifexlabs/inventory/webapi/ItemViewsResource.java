@@ -38,16 +38,13 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Read models: page-shaped aggregates composed from bus queries, so every
- * client (web UI now, mobile today) gets a page in one HTTP round trip.
- * Shaping only — pagination, filtering, and derived display fields
- * ({@code belowMin}, {@code locationName}); no business decisions are made
- * here. The composition fans out as several envelopes; that is gateway work,
- * not a reason to push view logic into the workers.
+ * Read models: page-shaped aggregates composed from bus queries, so every client (web UI now, mobile today) gets a page
+ * in one HTTP round trip. Shaping only — pagination, filtering, and derived display fields ({@code belowMin},
+ * {@code locationName}); no business decisions are made here. The composition fans out as several envelopes; that is
+ * gateway work, not a reason to push view logic into the workers.
  *
- * Lives under {@code /api/v1/views/*} rather than shadowing
- * {@code /api/v1/items}: the flat items surface stays canonical; views are
- * additive conveniences.
+ * Lives under {@code /api/v1/views/*} rather than shadowing {@code /api/v1/items}: the flat items surface stays
+ * canonical; views are additive conveniences.
  */
 @Path("/api/v1/views")
 @Blocking
@@ -66,9 +63,10 @@ public class ItemViewsResource {
     int from = Math.max(0, page) * Math.max(1, size);
     List<JsonObject> pageItems = matched.stream().skip(from).limit(Math.max(1, size))
         .map(ItemViewsResource::withBelowMin).toList();
-    return Response.ok(new JsonObject().put("items", new JsonArray(pageItems)).put("total", matched.size())
-        .put("page", page).put("size", size).put("query", query == null ? "" : query)
-        .put("types", knownTypes(all)).encode()).build();
+    return Response
+        .ok(new JsonObject().put("items", new JsonArray(pageItems)).put("total", matched.size()).put("page", page)
+            .put("size", size).put("query", query == null ? "" : query).put("types", knownTypes(all)).encode())
+        .build();
   }
 
   @GET
@@ -86,8 +84,8 @@ public class ItemViewsResource {
     // one hierarchy since Phase 15: any other item can be the container
     List<JsonObject> candidates = all.stream().filter(i -> !id.equals(i.getString("id")))
         .map(i -> new JsonObject().put("id", i.getString("id")).put("name", i.getString("name"))).toList();
-    List<JsonObject> history = objects((JsonArray) join(
-        this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", 20))));
+    List<JsonObject> history = objects(
+        (JsonArray) join(this.bus.request(BusActions.AUDIT_BY_TARGET, id, new JsonObject().put("limit", 20))));
     List<JsonObject> assets = objects((JsonArray) join(this.bus.request(BusActions.ASSETS_LIST_FOR, id, null)));
 
     // the container itself, resolved from the flat list (no extra round trip)
@@ -96,19 +94,17 @@ public class ItemViewsResource {
         : all.stream().filter(i -> containerId.equals(i.getString("id"))).findFirst().orElse(null);
 
     JsonObject detail = new JsonObject().put("item", item).put("children", children)
-        .put("candidates", new JsonArray(candidates))
-        .put("history", new JsonArray(history)).put("assets", new JsonArray(assets))
-        .put("types", knownTypes(all));
+        .put("candidates", new JsonArray(candidates)).put("history", new JsonArray(history))
+        .put("assets", new JsonArray(assets)).put("types", knownTypes(all));
     if (container != null) {
-      detail.put("container", new JsonObject().put("id", container.getString("id"))
-          .put("name", container.getString("name")));
+      detail.put("container",
+          new JsonObject().put("id", container.getString("id")).put("name", container.getString("name")));
       // the old UI key, kept so pages read naturally: "where is this thing"
       detail.put("locationName", container.getString("displayName", container.getString("name")));
     }
     // effective coordinates: own pin or inherited — absent when nothing is pinned
     try {
-      detail.put("effectiveCoordinates",
-          (JsonObject) join(this.bus.request(BusActions.ITEMS_COORDINATES, id, null)));
+      detail.put("effectiveCoordinates", (JsonObject) join(this.bus.request(BusActions.ITEMS_COORDINATES, id, null)));
     } catch (CompletionException nothingPinned) {
       // absent key = no pin anywhere in the chain
     }
@@ -118,10 +114,9 @@ public class ItemViewsResource {
   // --- shaping helpers --------------------------------------------------
 
   /**
-   * Type suggestions for create/edit forms: every distinct type in use plus
-   * the conventional trio, minus the {@code "_"} storage placeholder. Type
-   * remains free-form — these are suggestions, never a closed vocabulary —
-   * and computing them here serves web and mobile alike.
+   * Type suggestions for create/edit forms: every distinct type in use plus the conventional trio, minus the
+   * {@code "_"} storage placeholder. Type remains free-form — these are suggestions, never a closed vocabulary — and
+   * computing them here serves web and mobile alike.
    */
   private static JsonArray knownTypes(List<JsonObject> all) {
     java.util.TreeSet<String> types = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);

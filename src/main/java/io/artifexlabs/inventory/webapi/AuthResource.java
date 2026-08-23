@@ -36,10 +36,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Credential login granting API bearer tokens. {@code /login} is the only
- * unauthenticated path in the API; everything else demands a token this
- * endpoint (or an admin) issued. The credential check itself is bus work —
- * user identity lives behind the fabric — sent pre-auth (fabric token only).
+ * Credential login granting API bearer tokens. {@code /login} is the only unauthenticated path in the API; everything
+ * else demands a token this endpoint (or an admin) issued. The credential check itself is bus work — user identity
+ * lives behind the fabric — sent pre-auth (fabric token only).
  */
 @Path("/api/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)
@@ -70,8 +69,7 @@ public class AuthResource {
   @jakarta.ws.rs.GET
   @Path("/me")
   public Response me() {
-    return this.current.get()
-        .map(u -> Response.ok(UserFactory.serialize(u).encode()).build())
+    return this.current.get().map(u -> Response.ok(UserFactory.serialize(u).encode()).build())
         .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).build());
   }
 
@@ -79,8 +77,7 @@ public class AuthResource {
   @Path("/logout")
   public CompletionStage<Response> logout(@HeaderParam(HttpHeaders.AUTHORIZATION) String authorization) {
     String token = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7) : "";
-    return BusResponses.respond(
-        this.bus.anonymous(BusActions.AUTH_REVOKE, new JsonObject().put("token", token)),
+    return BusResponses.respond(this.bus.anonymous(BusActions.AUTH_REVOKE, new JsonObject().put("token", token)),
         body -> Response.ok(((JsonObject) body).encode()).build());
   }
 

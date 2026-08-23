@@ -30,11 +30,10 @@ import io.restassured.http.ContentType;
 import io.vertx.core.json.JsonObject;
 
 /**
- * print-label through the REAL BrotherPTouchPrinter against a local TCP sink.
- * Regression for the 2026-08-09 hardware-smoke bug: the printer's future
- * completes on a ForkJoinPool thread, where the request-scoped CurrentUser
- * proxy is unreachable — the audit step 500'd AFTER the label had physically
- * printed. The log printer completes synchronously and can never catch this.
+ * print-label through the REAL BrotherPTouchPrinter against a local TCP sink. Regression for the 2026-08-09
+ * hardware-smoke bug: the printer's future completes on a ForkJoinPool thread, where the request-scoped CurrentUser
+ * proxy is unreachable — the audit step 500'd AFTER the label had physically printed. The log printer completes
+ * synchronously and can never catch this.
  */
 @QuarkusTest
 @TestProfile(BrotherPrinterModeTest.BrotherProfile.class)
@@ -50,8 +49,8 @@ public class BrotherPrinterModeTest {
   @Test
   public void testPrintLabelViaBrotherPipelineAuditsAndSendsRaster() {
     String id = new JsonObject(given().header("Authorization", "Bearer " + TOKEN).contentType(ContentType.JSON)
-        .body(new JsonObject().put("name", "brother-thing").put("type", "tool").encode()).post("/api/v1/items")
-        .then().statusCode(201).extract().asString()).getString("id");
+        .body(new JsonObject().put("name", "brother-thing").put("type", "tool").encode()).post("/api/v1/items").then()
+        .statusCode(201).extract().asString()).getString("id");
 
     given().header("Authorization", "Bearer " + TOKEN).post("/api/v1/items/" + id + "/print-label").then()
         .statusCode(202).body("accepted", org.hamcrest.Matchers.is(true));
