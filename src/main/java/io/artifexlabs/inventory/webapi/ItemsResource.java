@@ -312,7 +312,16 @@ public class ItemsResource {
   // matching does not backtrack: this resource owns /api/v1/items and every
   // path under it (PLAN.md's eighth milestone recorded the same trap).
 
-  /** Replace a medium's whole listing. Snapshot semantics: this IS the manifest now. */
+  /**
+   * Replace a medium's whole listing. Snapshot semantics: this IS the manifest now.
+   *
+   * <p>
+   * Three body formats, distinguished without a new endpoint or a query parameter because the shapes are unambiguous:
+   * JSON when the content type says so, otherwise TAB-separated {@code <size>\t<mtime>\t<path>} from {@code find},
+   * otherwise {@code sha256sum} output. {@code find} is the format that matters now — it describes a medium without
+   * reading a byte, which is what let hashing move off the ingest path; {@code sha256sum} stays supported because a
+   * checksum file someone already has is still a legitimate way to describe a disc.
+   */
   @PUT
   @Path("/{id}/data/manifest")
   @Consumes({
@@ -323,8 +332,8 @@ public class ItemsResource {
       @jakarta.ws.rs.HeaderParam("Content-Type") String contentType, String body) {
     final JsonArray entries;
     try {
-      entries = contentType != null && contentType.startsWith(MediaType.TEXT_PLAIN)
-          ? DataResource.parseDigestLines(body)
+      boolean text = contentType != null && contentType.startsWith(MediaType.TEXT_PLAIN);
+      entries = text ? DataResource.parseManifestText(body)
           : new JsonArray(body == null || body.isBlank() ? "[]" : body);
     } catch (RuntimeException bad) {
       return java.util.concurrent.CompletableFuture.completedStage(Response.status(Response.Status.BAD_REQUEST)

@@ -110,6 +110,83 @@ public class DataResource {
     return new JsonArray(List.copyOf(entries));
   }
 
+  /**
+   * Pick a text manifest parser by SHAPE rather than by asking the caller to declare one. A find line is TAB-separated;
+   * a {@code sha256sum} line never contains a tab. Guessing is acceptable here precisely because the two formats cannot
+   * be confused — and a wrong guess would fail loudly on the very first line rather than quietly mis-parse.
+   */
+  static JsonArray parseManifestText(String body) {
+    if (body == null || body.isBlank())
+      return new JsonArray();
+    for (String raw : body.split("\r?\n")) {
+      if (raw.strip().isEmpty())
+        continue;
+      return raw.indexOf('\t') >= 0 ? parseFindLines(body) : parseDigestLines(body);
+    }
+    return new JsonArray();
+  }
+
+  /**
+   * Parse a {@code find}-shaped manifest: {@code <size>\t<mtime>\t<path>}, one line per file, produced by
+   *
+   * <pre>
+   *   find /mnt/x -type f       -printf '%s\t%TFT%TT\t%p\n'
+   *   find /mnt/x -type d -empty -printf '\t\t%p/\n'
+   * </pre>
+   *
+   * <b>This, not {@code sha256sum}, is what a manifest is now.</b> A manifest says what EXISTS; hashing reads every
+   * byte. {@code find} describes a 120 TB tree in minutes and costs no reads, which is the entire reason hashing could
+   * be moved off the ingest path. {@code sha256sum} output always presupposed the hashing we now do afterwards.
+   *
+   * <p>
+   * Two consequences worth the format change: sizes become REAL — {@link #parseDigestLines} has always written
+   * {@code 0L}, which would silently disable the size floor every duplicate-section query depends on — and a trailing
+   * {@code /} lets an EMPTY directory be named, without which two media differing only by an empty folder hash
+   * identically.
+   *
+   * <p>
+   * Size and mtime may both be blank (that is what the empty-directory line above produces). Anything else malformed is
+   * refused by line number rather than skipped, because a partially-read manifest claims a medium holds less than it
+   * does.
+   */
+  static JsonArray parseFindLines(String body) {
+    List<JsonObject> entries = new ArrayList<>();
+    if (body == null)
+      return new JsonArray();
+    int lineNumber = 0;
+    for (String raw : body.split("\r?\n")) {
+      lineNumber++;
+      if (raw.strip().isEmpty())
+        continue;
+      // split on TAB only: paths legitimately contain spaces, and a media tree
+      // is full of them
+      String[] parts = raw.split("\t", 3);
+      if (parts.length < 3)
+        throw new IllegalArgumentException("line " + lineNumber + " is not '<size>\\t<mtime>\\t<path>': " + raw);
+      String sizeText = parts[0].strip();
+      String mtimeText = parts[1].strip();
+      String path = parts[2];
+      long size;
+      try {
+        size = sizeText.isEmpty() ? 0L : Long.parseLong(sizeText);
+      } catch (NumberFormatException bad) {
+        throw new IllegalArgumentException("line " + lineNumber + " has an unreadable size: " + sizeText);
+      }
+      java.time.Instant modified = null;
+      if (!mtimeText.isEmpty())
+        try {
+          // find's %TFT%TT is local time without a zone; treat it as UTC rather
+          // than guessing the scanning machine's offset
+          modified = java.time.LocalDateTime.parse(mtimeText.replace(' ', 'T')).toInstant(java.time.ZoneOffset.UTC);
+        } catch (java.time.format.DateTimeParseException bad) {
+          throw new IllegalArgumentException("line " + lineNumber + " has an unreadable timestamp: " + mtimeText);
+        }
+      // no hash: that is the point. The async hasher fills it in later.
+      entries.add(new DataEntry(path, size, null, null, null, modified, List.of()).toJson());
+    }
+    return new JsonArray(List.copyOf(entries));
+  }
+
   private static java.util.Optional<HashAlgorithm> byDigestLength(String hash) {
     for (HashAlgorithm a : HashAlgorithm.values())
       if (a.accepts(hash))
