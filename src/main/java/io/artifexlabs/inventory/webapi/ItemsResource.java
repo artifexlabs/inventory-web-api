@@ -366,12 +366,95 @@ public class ItemsResource {
         s -> Response.ok(((JsonObject) s).encode()).build());
   }
 
-  /** Media holding the same files at the same paths — the mirror question. */
+  /**
+   * How much each other medium has in common with this one — "how much of this disc do I already have elsewhere?".
+   *
+   * <p>
+   * Replaces {@code /data/mirrors}, which answered a per-MEDIUM question with per-FILE rows: millions of them, to say
+   * what turns out to be four numbers and two flags. {@code identical} means the two trees match all the way down;
+   * {@code contains} means theirs is a superset of ours, which is the "which backup is newer" answer.
+   *
+   * <p>
+   * Overlap is computed from content digests, so a medium nobody has hashed yet overlaps nothing. Ask
+   * {@code /data/sections?match=structure} instead — it answers the same shape of question weeks earlier.
+   */
   @GET
-  @Path("/{id}/data/mirrors")
+  @Path("/{id}/data/overlap")
   @Produces(MediaType.APPLICATION_JSON)
-  public CompletionStage<Response> mirrors(@PathParam("id") String id) {
-    return BusResponses.respond(this.bus.request(BusActions.DATA_MIRRORS, id, null),
+  public CompletionStage<Response> overlap(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_OVERLAP, id, null),
+        found -> Response.ok(((JsonArray) found).encode()).build());
+  }
+
+  /**
+   * What this medium could not read, and which sibling media hold an intact copy.
+   *
+   * <p>
+   * {@code recoverable: false} is the row that matters — that damage cannot be repaired from anything catalogued.
+   * Matching is by PATH, because an unreadable file has no content digest to match on; that is what unreadable means.
+   */
+  @GET
+  @Path("/{id}/data/repairs")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> repairs(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_REPAIRS, id, null),
+        found -> Response.ok(((JsonArray) found).encode()).build());
+  }
+
+  /**
+   * Recompute this medium's directory rollup: Merkle identity, the name-independent variant, and the shape of what
+   * could not be read.
+   *
+   * <p>
+   * A POST because it writes — it rewrites every directory row the medium owns. Idempotent, so running it twice costs
+   * time and changes nothing, and running it mid-hash is meaningful rather than premature: directories with unhashed
+   * descendants simply get no Merkle, so the answer is always a true statement about the moment it was taken.
+   */
+  @POST
+  @Path("/{id}/data/rollup")
+  // the class declares @Consumes(APPLICATION_JSON); this one takes no body at
+  // all, and demanding a content type for a request with nothing in it is how
+  // you get a 415 for a correctly formed call
+  @Consumes(MediaType.WILDCARD)
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> rollUp(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_ROLLUP, id, null),
+        r -> Response.ok(((JsonObject) r).encode()).build());
+  }
+
+  /**
+   * How far along hashing this medium is.
+   *
+   * <p>
+   * Read-only and cheap, which is the point: hashing a medium takes weeks, and an operator has to be able to poll this
+   * without competing with the worker for the disc. {@code complete} means nothing is left to do; {@code intact} means
+   * that AND nothing was unreadable, because a medium can be finished and damaged.
+   */
+  @GET
+  @Path("/{id}/data/progress")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> hashingProgress(@PathParam("id") String id) {
+    return BusResponses.respond(this.bus.request(BusActions.DATA_PROGRESS, id, null),
+        p -> Response.ok(((JsonObject) p).encode()).build());
+  }
+
+  /**
+   * Subtrees of THIS medium that also sit somewhere else — on another disc, or elsewhere on this one.
+   *
+   * <p>
+   * The inventory-wide form of the same question is {@code GET /api/v1/data/sections}, which is the same handler with
+   * no target. See {@link DataResource#sectionQuery} for what the parameters mean and why the floor is not optional.
+   */
+  @GET
+  @Path("/{id}/data/sections")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> sections(@PathParam("id") String id, @QueryParam("match") String match,
+      @QueryParam("scope") String scope, @QueryParam("minFiles") Integer minFiles,
+      @QueryParam("minBytes") Long minBytes, @QueryParam("minDepth") Integer minDepth, @QueryParam("page") Integer page,
+      @QueryParam("size") Integer size) {
+    return BusResponses.respond(
+        this.bus.request(BusActions.DATA_SECTIONS, id,
+            DataResource.sectionQuery(match, scope, minFiles, minBytes, minDepth, page, size)),
         found -> Response.ok(((JsonArray) found).encode()).build());
   }
 

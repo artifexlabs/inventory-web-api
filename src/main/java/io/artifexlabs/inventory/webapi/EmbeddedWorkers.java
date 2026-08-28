@@ -67,14 +67,14 @@ public class EmbeddedWorkers {
   void onStart(@Observes StartupEvent ev, Instance<InventorySystem> inventory, Instance<AssetStore> assets,
       Instance<RegionSystem> regions, Instance<AuditReader> auditReader, Instance<AuditSink> auditSink,
       Instance<LabelPrinter> printer, Instance<UserStore> users, Instance<TokenService> tokens,
-      Instance<io.artifexlabs.inventory.api.UpcCatalog> catalog,
-      Instance<io.artifexlabs.inventory.api.DataSystem> data) {
+      Instance<io.artifexlabs.inventory.api.UpcCatalog> catalog, Instance<io.artifexlabs.inventory.api.DataSystem> data,
+      Instance<io.artifexlabs.inventory.api.DataHashing> hashing) {
     if (!"embedded".equals(this.mode)) {
       log.info("bus workers remote: the gateway sends envelopes to inventory-server");
       return;
     }
     var services = new BusWorkers.BackendServices(inventory.get(), assets.get(), regions.get(), auditReader.get(),
-        auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get(), data.get());
+        auditSink.get(), printer.get(), users.get(), tokens.get(), catalog.get(), data.get(), hashing.get());
     try {
       BusWorkers.deploy(this.vertx, services,
           new BusGuard(this.fabricToken, new io.artifexlabs.inventory.impl.bus.VertxStatusPublisher(this.vertx)),

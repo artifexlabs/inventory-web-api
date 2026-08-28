@@ -79,6 +79,59 @@ public class DataResource {
   }
 
   /**
+   * "Where are there duplicated sections in my media inventory?" — asked of everything, not of one medium.
+   *
+   * <p>
+   * The medium-scoped form is {@code GET /api/v1/items/{id}/data/sections}; it is the same handler with a target. Both
+   * take the same parameters, described on {@link #sectionQuery}.
+   */
+  @GET
+  @Path("/sections")
+  @Produces(MediaType.APPLICATION_JSON)
+  public CompletionStage<Response> sections(@QueryParam("match") String match, @QueryParam("scope") String scope,
+      @QueryParam("minFiles") Integer minFiles, @QueryParam("minBytes") Long minBytes,
+      @QueryParam("minDepth") Integer minDepth, @QueryParam("page") Integer page, @QueryParam("size") Integer size) {
+    return BusResponses.respond(
+        this.bus.request(BusActions.DATA_SECTIONS, null,
+            sectionQuery(match, scope, minFiles, minBytes, minDepth, page, size)),
+        found -> Response.ok(((JsonArray) found).encode()).build());
+  }
+
+  /**
+   * Turn the query string into a section query, omitting anything absent so the API's own defaults apply.
+   *
+   * <p>
+   * {@code match} is {@code structure} (names and sizes, answerable the moment a manifest lands), {@code merkle} (names
+   * and content, proof of a copy) or {@code content} (content only, so renamed files still match). {@code scope} is
+   * {@code across_media}, {@code within_medium} or {@code both} — and within-medium is not an edge case, because a
+   * snapshotting filesystem keeps generations of one tree on a single disc.
+   *
+   * <p>
+   * <b>Lowering {@code minFiles} is how you drown.</b> On the measured tree 46.7% of directories hold two files or
+   * fewer and 7,492 held nothing but a {@code pom.xml}; the default floor of 8 exists to keep those coincidences out of
+   * the answer. Depth alone does not do it — those directories sit at many depths.
+   */
+  static JsonObject sectionQuery(String match, String scope, Integer minFiles, Long minBytes, Integer minDepth,
+      Integer page, Integer size) {
+    JsonObject q = new JsonObject();
+    if (match != null && !match.isBlank())
+      q.put("match", match);
+    if (scope != null && !scope.isBlank())
+      q.put("scope", scope);
+    if (minFiles != null)
+      q.put("minFiles", minFiles);
+    if (minBytes != null)
+      q.put("minBytes", minBytes);
+    if (minDepth != null)
+      q.put("minDepth", minDepth);
+    if (page != null)
+      q.put("page", page);
+    if (size != null)
+      q.put("size", size);
+    return q;
+  }
+
+  /**
    * Parse {@code sha256sum}-style lines: {@code <hex>  <path>}, two spaces by convention but any run of whitespace
    * works, and a {@code *} binary marker is tolerated. Blank lines are skipped; anything else is refused loudly rather
    * than silently dropped, because a partially-read manifest would claim a medium holds less than it does.
